@@ -1,95 +1,121 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui";
-import { signOut } from "@/app/(auth)/actions";
-import { Wallet, LogOut } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
+import { Users, Receipt, TrendingUp, TrendingDown } from "lucide-react";
 
 export default async function DashboardPage() {
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase.auth.getUser();
-
-    if (error || !data?.user) {
-        redirect("/login");
-    }
-
-    const user = data.user;
+    // TODO: Fetch actual stats from database
+    const stats = [
+        {
+            title: "Total Balance",
+            value: "$0.00",
+            description: "You're all settled up!",
+            icon: TrendingUp,
+            color: "text-green-600",
+            bgColor: "bg-green-100 dark:bg-green-900/30",
+        },
+        {
+            title: "You Owe",
+            value: "$0.00",
+            description: "No pending debts",
+            icon: TrendingDown,
+            color: "text-red-600",
+            bgColor: "bg-red-100 dark:bg-red-900/30",
+        },
+        {
+            title: "Groups",
+            value: "0",
+            description: "Create your first group",
+            icon: Users,
+            color: "text-blue-600",
+            bgColor: "bg-blue-100 dark:bg-blue-900/30",
+        },
+        {
+            title: "Expenses",
+            value: "0",
+            description: "This month",
+            icon: Receipt,
+            color: "text-purple-600",
+            bgColor: "bg-purple-100 dark:bg-purple-900/30",
+        },
+    ];
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-            {/* Header */}
-            <header className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center gap-2">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-teal-600">
-                            <Wallet className="h-5 w-5 text-white" />
+        <div className="space-y-8">
+            {/* Welcome section */}
+            <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Welcome back, {user?.user_metadata?.full_name?.split(" ")[0] || "there"}! 👋
+                </h1>
+                <p className="mt-1 text-gray-600 dark:text-gray-400">
+                    Here&apos;s an overview of your expenses and balances.
+                </p>
+            </div>
+
+            {/* Stats grid */}
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {stats.map((stat) => (
+                    <Card key={stat.title}>
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                                {stat.title}
+                            </CardTitle>
+                            <div className={`rounded-lg p-2 ${stat.bgColor}`}>
+                                <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                                {stat.value}
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {stat.description}
+                            </p>
+                        </CardContent>
+                    </Card>
+                ))}
+            </div>
+
+            {/* Recent activity section */}
+            <div className="grid gap-6 lg:grid-cols-2">
+                {/* Recent expenses */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Recent Expenses</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                            <Receipt className="h-12 w-12 text-gray-300 dark:text-gray-600" />
+                            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                                No expenses yet
+                            </p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                                Add your first expense to get started
+                            </p>
                         </div>
-                        <span className="text-xl font-bold text-gray-900 dark:text-white">
-                            Smart<span className="text-teal-600">Split</span>
-                        </span>
-                    </div>
+                    </CardContent>
+                </Card>
 
-                    <form action={signOut}>
-                        <Button variant="ghost" size="sm" type="submit">
-                            <LogOut className="h-4 w-4" />
-                            Sign Out
-                        </Button>
-                    </form>
-                </div>
-            </header>
-
-            {/* Main content */}
-            <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-                <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                        Welcome to SmartSplit! 🎉
-                    </h1>
-                    <p className="mt-2 text-gray-600 dark:text-gray-400">
-                        You&apos;re logged in as{" "}
-                        <span className="font-medium text-gray-900 dark:text-white">
-                            {user.email}
-                        </span>
-                    </p>
-
-                    <div className="mt-8 rounded-lg bg-teal-50 p-4 dark:bg-teal-900/20">
-                        <p className="text-sm text-teal-800 dark:text-teal-300">
-                            <strong>Auth is working!</strong> This page is protected and only
-                            visible to authenticated users.
-                        </p>
-                    </div>
-
-                    <div className="mt-8">
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                            User Details
-                        </h2>
-                        <dl className="mt-4 space-y-3 text-sm">
-                            <div className="flex gap-2">
-                                <dt className="font-medium text-gray-500 dark:text-gray-400">
-                                    User ID:
-                                </dt>
-                                <dd className="font-mono text-gray-900 dark:text-white">
-                                    {user.id}
-                                </dd>
-                            </div>
-                            <div className="flex gap-2">
-                                <dt className="font-medium text-gray-500 dark:text-gray-400">
-                                    Email:
-                                </dt>
-                                <dd className="text-gray-900 dark:text-white">{user.email}</dd>
-                            </div>
-                            <div className="flex gap-2">
-                                <dt className="font-medium text-gray-500 dark:text-gray-400">
-                                    Name:
-                                </dt>
-                                <dd className="text-gray-900 dark:text-white">
-                                    {user.user_metadata?.full_name || "Not set"}
-                                </dd>
-                            </div>
-                        </dl>
-                    </div>
-                </div>
-            </main>
+                {/* Your groups */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Your Groups</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                            <Users className="h-12 w-12 text-gray-300 dark:text-gray-600" />
+                            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                                No groups yet
+                            </p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                                Create a group to start splitting expenses
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     );
 }
-
