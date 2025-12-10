@@ -315,6 +315,10 @@ export function MyForm() {
 - **Correction**: Must use anon key in JWT format (`eyJ...`)
 - **Prevention**: Always verify key format matches `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
 
+- **Mistake**: Auth errors from Supabase (otp_expired, access_denied) were not handled gracefully
+- **Correction**: Added `useSearchParams()` to read URL error params and display user-friendly messages
+- **Prevention**: Always handle error query params on auth pages and map error codes to friendly messages
+
 ---
 
 ## PENDING DECISIONS
