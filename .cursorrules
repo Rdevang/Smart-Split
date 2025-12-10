@@ -1,0 +1,244 @@
+# Smart Split - Cursor Rules
+# This ruleset evolves with each conversation. Update the LEARNINGS section as decisions are made.
+
+## PROJECT IDENTITY
+- **Name**: Smart Split
+- **Type**: Expense sharing application (Splitwise clone)
+- **Stack**: Next.js 16 (App Router), TypeScript, Supabase, Tailwind CSS 4
+
+---
+
+## TECH STACK RULES
+
+### Frontend
+- **Framework**: Next.js 16 with App Router ONLY (no Pages Router)
+- **Styling**: Tailwind CSS ONLY - no CSS modules, styled-components, or inline styles
+- **Components**: React Server Components by default, "use client" only when necessary
+- **Icons**: lucide-react ONLY
+- **Fonts**: Plus Jakarta Sans (headings), Inter (body) via next/font
+
+### Backend
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Supabase Auth (email/password, OAuth)
+- **API**: Server Actions preferred over API routes
+- **File Storage**: Supabase Storage (for receipts)
+
+### Form Handling
+- **Validation**: Zod schemas
+- **Forms**: react-hook-form with @hookform/resolvers
+
+---
+
+## ARCHITECTURE PRINCIPLES
+
+### SOLID
+1. **Single Responsibility**: One component/function = one job
+2. **Open/Closed**: Extend via props/composition, don't modify existing components
+3. **Liskov Substitution**: Components should be interchangeable with their abstractions
+4. **Interface Segregation**: Small, focused interfaces over large ones
+5. **Dependency Inversion**: Depend on abstractions (services, hooks), not implementations
+
+### DRY (Don't Repeat Yourself)
+- Extract repeated logic into hooks (`src/hooks/`)
+- Extract repeated UI into components (`src/components/`)
+- Centralize API calls in services (`src/services/`)
+- Use the `cn()` utility for className merging
+
+### Separation of Concerns
+```
+src/
+├── app/           # Routes and page components ONLY
+├── components/    
+│   ├── ui/        # Base reusable components (Button, Input, Card)
+│   ├── forms/     # Form-specific components
+│   ├── layout/    # Header, Footer, Sidebar, etc.
+│   └── features/  # Feature-specific components (ExpenseCard, GroupList)
+├── services/      # Business logic and Supabase calls
+├── hooks/         # Custom React hooks
+├── lib/           # Utilities, configs, Supabase clients
+└── types/         # TypeScript interfaces and types
+```
+
+---
+
+## CODE STYLE
+
+### TypeScript
+- Strict mode enabled
+- Explicit return types on exported functions
+- Use `interface` for object shapes, `type` for unions/primitives
+- No `any` - use `unknown` if type is truly unknown
+
+### Components
+- Functional components only
+- Props interface named `{ComponentName}Props`
+- Use forwardRef for components that need ref access
+- Export named exports (not default) for non-page components
+
+### Naming Conventions
+- **Files**: kebab-case (`expense-card.tsx`)
+- **Components**: PascalCase (`ExpenseCard`)
+- **Hooks**: camelCase with `use` prefix (`useExpenses`)
+- **Services**: camelCase (`expenseService.ts`)
+- **Types**: PascalCase (`Expense`, `CreateExpenseInput`)
+
+### Tailwind
+- Use `cn()` utility for conditional classes
+- Mobile-first responsive design
+- Dark mode support via `dark:` prefix
+- Custom colors defined in `globals.css` under `@theme`
+
+---
+
+## COMPONENT PATTERNS
+
+### UI Components (src/components/ui/)
+```tsx
+// Always use forwardRef for flexibility
+// Always accept className for customization
+// Use CVA for variants
+
+import { forwardRef } from "react";
+import { cn } from "@/lib/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+
+const buttonVariants = cva("base-classes", {
+  variants: { variant: {}, size: {} },
+  defaultVariants: {},
+});
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  VariantProps<typeof buttonVariants> {}
+
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, ...props }, ref) => (
+    <button
+      ref={ref}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+);
+Button.displayName = "Button";
+
+export { Button, buttonVariants };
+```
+
+### Feature Components
+```tsx
+// Keep business logic in hooks/services
+// Component only handles rendering
+
+export function ExpenseList({ groupId }: { groupId: string }) {
+  const { expenses, isLoading } = useExpenses(groupId);
+  
+  if (isLoading) return <Skeleton />;
+  
+  return expenses.map(expense => <ExpenseCard key={expense.id} expense={expense} />);
+}
+```
+
+### Server Actions
+```tsx
+// Always in separate files with "use server"
+// Return { error: string } on failure, redirect on success
+
+"use server";
+
+export async function createExpense(formData: FormData) {
+  const supabase = await createClient();
+  // ... validation and logic
+  if (error) return { error: error.message };
+  revalidatePath("/dashboard");
+  redirect("/expenses");
+}
+```
+
+---
+
+## SUPABASE PATTERNS
+
+### Client Usage
+- Browser: `import { createClient } from "@/lib/supabase/client"`
+- Server Components/Actions: `import { createClient } from "@/lib/supabase/server"`
+- Middleware: `import { updateSession } from "@/lib/supabase/middleware"`
+
+### Row Level Security
+- ALWAYS enable RLS on tables
+- Create policies before inserting data
+- Test policies in Supabase dashboard
+
+### Type Safety
+- Generate types: `npx supabase gen types typescript --project-id <id> > src/types/database.ts`
+- Use generated types in services
+
+---
+
+## SECURITY RULES
+
+1. Never expose service role key to client
+2. Always validate user input with Zod
+3. Use RLS policies for data access control
+4. Sanitize user-generated content before display
+5. Use HTTPS in production
+
+---
+
+## PERFORMANCE RULES
+
+1. Use React Server Components for data fetching
+2. Lazy load heavy components with `dynamic()`
+3. Optimize images with `next/image`
+4. Minimize "use client" components
+5. Use Suspense boundaries for loading states
+
+---
+
+## LEARNINGS & DECISIONS LOG
+<!-- This section is updated after each conversation with key decisions -->
+
+### 2024-12-10: Project Initialization
+- Chose Plus Jakarta Sans + Inter fonts for modern, distinctive look
+- Teal (#14b8a6) as primary color - represents trust/money/balance
+- Auth layout: split-screen design (branding left, form right)
+- Created cn() utility with clsx + tailwind-merge for class handling
+- Using CVA (class-variance-authority) for component variants
+
+### 2024-12-10: Supabase Setup
+- Using @supabase/ssr for server-side auth
+- Middleware handles session refresh and route protection
+- Protected routes: /dashboard/*
+- Auth callback route: /auth/callback for OAuth/email confirmation
+- Server actions in src/app/(auth)/actions.ts for login/register/signOut
+
+### 2024-12-10: UI Component Library
+- Created: Button (6 variants, 4 sizes, loading state), Input (with label/error), Card
+- All components use forwardRef for flexibility
+- Exported from src/components/ui/index.ts barrel file
+
+---
+
+## PENDING DECISIONS
+<!-- Questions to resolve in future conversations -->
+
+- [ ] State management approach (Context vs Zustand vs none)
+- [ ] Image upload strategy for receipts
+- [ ] Push notification implementation
+- [ ] Offline support requirements
+- [ ] Currency handling (multi-currency support?)
+
+---
+
+## AVOID
+
+❌ Don't use CSS modules or styled-components
+❌ Don't use Pages Router patterns
+❌ Don't fetch data in client components when server components work
+❌ Don't create API routes when Server Actions suffice
+❌ Don't use `any` type
+❌ Don't skip form validation
+❌ Don't hardcode colors - use Tailwind classes
+❌ Don't create new components for one-time use
+❌ Don't skip error handling in async operations
+❌ Don't commit .env files
+
