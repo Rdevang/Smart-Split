@@ -10,9 +10,9 @@ import { createClient } from "@/lib/supabase/client";
 import Image from "next/image";
 
 const profileSchema = z.object({
-  full_name: z.string().min(2, "Name must be at least 2 characters"),
-  phone: z.string().optional(),
-  currency: z.string(),
+    full_name: z.string().min(2, "Name must be at least 2 characters"),
+    phone: z.string().optional(),
+    currency: z.string(),
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -109,16 +109,16 @@ export function ProfileForm({ user }: ProfileFormProps) {
                     <CardDescription>Update your profile picture</CardDescription>
                 </CardHeader>
                 <CardContent>
-          <div className="flex items-center gap-6">
-            {user.avatar_url ? (
-              <Image
-                src={user.avatar_url}
-                alt={user.full_name || "Profile"}
-                width={80}
-                height={80}
-                className="h-20 w-20 rounded-full object-cover"
-              />
-            ) : (
+                    <div className="flex items-center gap-6">
+                        {user.avatar_url ? (
+                            <Image
+                                src={user.avatar_url}
+                                alt={user.full_name || "Profile"}
+                                width={80}
+                                height={80}
+                                className="h-20 w-20 rounded-full object-cover"
+                            />
+                        ) : (
                             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-600 text-2xl font-semibold text-white">
                                 {initials}
                             </div>
@@ -146,8 +146,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
                     {message && (
                         <div
                             className={`mb-6 rounded-lg p-4 text-sm ${message.type === "success"
-                                    ? "border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400"
-                                    : "border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                ? "border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                : "border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
                                 }`}
                         >
                             {message.text}

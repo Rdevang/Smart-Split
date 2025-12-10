@@ -105,15 +105,15 @@ export function Navbar({ user }: NavbarProps) {
                             onClick={() => setIsProfileOpen(!isProfileOpen)}
                             className="flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
                         >
-            {user.avatar_url ? (
-              <Image
-                src={user.avatar_url}
-                alt={user.full_name || "Profile"}
-                width={32}
-                height={32}
-                className="h-8 w-8 rounded-full object-cover"
-              />
-            ) : (
+                            {user.avatar_url ? (
+                                <Image
+                                    src={user.avatar_url}
+                                    alt={user.full_name || "Profile"}
+                                    width={32}
+                                    height={32}
+                                    className="h-8 w-8 rounded-full object-cover"
+                                />
+                            ) : (
                                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-600 text-xs font-semibold text-white">
                                     {initials}
                                 </div>
