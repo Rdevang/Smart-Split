@@ -15,11 +15,18 @@ export default async function DashboardLayout({
         redirect("/login");
     }
 
+    // Fetch profile from database for latest avatar
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", data.user.id)
+        .single();
+
     const user = {
         id: data.user.id,
         email: data.user.email!,
-        full_name: data.user.user_metadata?.full_name || null,
-        avatar_url: data.user.user_metadata?.avatar_url || null,
+        full_name: profile?.full_name || data.user.user_metadata?.full_name || null,
+        avatar_url: profile?.avatar_url || data.user.user_metadata?.avatar_url || null,
     };
 
     return (
@@ -31,4 +38,3 @@ export default async function DashboardLayout({
         </div>
     );
 }
-

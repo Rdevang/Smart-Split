@@ -112,6 +112,7 @@ export function Navbar({ user }: NavbarProps) {
                                     width={32}
                                     height={32}
                                     className="h-8 w-8 rounded-full object-cover"
+                                    unoptimized
                                 />
                             ) : (
                                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-teal-600 text-xs font-semibold text-white">

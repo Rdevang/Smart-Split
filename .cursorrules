@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 1.0.0 | LAST UPDATED: 2024-12-10
+# VERSION: 2.0.0 | LAST UPDATED: 2024-12-10
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -33,6 +33,7 @@
 - **Type**: Expense sharing application (Splitwise clone)
 - **Stack**: Next.js 16 (App Router), TypeScript, Supabase, Tailwind CSS 4
 - **Started**: 2024-12-10
+- **Supabase Project**: cizakzarkdgieclbwljy
 
 ---
 
@@ -44,31 +45,41 @@
 - **Components**: React Server Components by default, "use client" only when necessary
 - **Icons**: lucide-react ONLY
 - **Fonts**: Plus Jakarta Sans (headings), Inter (body) via next/font
+- **Images**: Always use `next/image` with configured domains in `next.config.ts`
 
 ### Backend
 - **Database**: Supabase (PostgreSQL)
-- **Auth**: Supabase Auth (email/password, OAuth)
+- **Auth**: Supabase Auth (email/password, Google OAuth, GitHub OAuth)
 - **API**: Server Actions preferred over API routes
-- **File Storage**: Supabase Storage (for receipts)
+- **File Storage**: Supabase Storage (avatars bucket configured)
 
 ### Form Handling
 - **Validation**: Zod schemas
 - **Forms**: react-hook-form with @hookform/resolvers
+
+### Testing
+- **Framework**: Jest with React Testing Library
+- **Config**: `jest.config.ts` with Next.js integration
+- **Setup**: `jest.setup.ts` for global mocks
+- **Pattern**: Mirror `src/` structure in `src/__tests__/`
 
 ### Dependencies (Current)
 ```json
 {
   "next": "16.0.8",
   "react": "19.2.1",
-  "@supabase/supabase-js": "latest",
-  "@supabase/ssr": "latest",
-  "tailwindcss": "4.x",
-  "class-variance-authority": "latest",
-  "clsx": "latest",
-  "tailwind-merge": "latest",
-  "lucide-react": "latest",
-  "react-hook-form": "latest",
-  "zod": "latest"
+  "@supabase/supabase-js": "^2.87.1",
+  "@supabase/ssr": "^0.8.0",
+  "tailwindcss": "^4",
+  "class-variance-authority": "^0.7.1",
+  "clsx": "^2.1.1",
+  "tailwind-merge": "^3.4.0",
+  "lucide-react": "^0.559.0",
+  "react-hook-form": "^7.68.0",
+  "zod": "^4.1.13",
+  "jest": "^30.2.0",
+  "@testing-library/react": "^16.3.0",
+  "@testing-library/jest-dom": "^6.9.1"
 }
 ```
 
@@ -92,16 +103,20 @@
 ### Separation of Concerns
 ```
 src/
-├── app/           # Routes and page components ONLY
+├── app/                    # Routes and page components ONLY
+│   ├── (auth)/             # Auth route group (login, register)
+│   ├── (dashboard)/        # Protected dashboard routes
+│   └── auth/callback/      # OAuth callback handler
 ├── components/    
-│   ├── ui/        # Base reusable components (Button, Input, Card)
-│   ├── forms/     # Form-specific components
-│   ├── layout/    # Header, Footer, Sidebar, etc.
-│   └── features/  # Feature-specific components (ExpenseCard, GroupList)
-├── services/      # Business logic and Supabase calls
-├── hooks/         # Custom React hooks
-├── lib/           # Utilities, configs, Supabase clients
-└── types/         # TypeScript interfaces and types
+│   ├── ui/                 # Base reusable components (Button, Input, Card)
+│   ├── forms/              # Form-specific components
+│   ├── layout/             # Navbar, Footer, Sidebar
+│   └── features/           # Feature-specific components
+├── services/               # Business logic and Supabase calls
+├── hooks/                  # Custom React hooks
+├── lib/                    # Utilities, configs, Supabase clients
+├── types/                  # TypeScript interfaces and types
+└── __tests__/              # Jest test files (mirrors src/ structure)
 ```
 
 ---
@@ -124,8 +139,9 @@ src/
 - **Files**: kebab-case (`expense-card.tsx`)
 - **Components**: PascalCase (`ExpenseCard`)
 - **Hooks**: camelCase with `use` prefix (`useExpenses`)
-- **Services**: camelCase (`expenseService.ts`)
+- **Services**: camelCase (`profileService`)
 - **Types**: PascalCase (`Expense`, `CreateExpenseInput`)
+- **Tests**: `*.test.ts` or `*.test.tsx`
 
 ### Tailwind
 - Use `cn()` utility for conditional classes
@@ -165,6 +181,35 @@ Component.displayName = "Component";
 export { Component, componentVariants };
 ```
 
+### Service Pattern (src/services/)
+```tsx
+import { createClient } from "@/lib/supabase/client";
+
+export const myService = {
+  async getData(id: string) {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("table")
+      .select("*")
+      .eq("id", id)
+      .single();
+    
+    if (error) return null;
+    return data;
+  },
+
+  async updateData(id: string, input: UpdateInput) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("table")
+      .update(input)
+      .eq("id", id);
+    
+    return { success: !error, error: error?.message };
+  },
+};
+```
+
 ### Server Action Pattern
 ```tsx
 "use server";
@@ -191,48 +236,72 @@ export async function actionName(formData: FormData) {
 }
 ```
 
-### Protected Page Pattern
+### OAuth Action Pattern
+```tsx
+"use server";
+
+export async function signInWithGoogle() {
+  const supabase = await createClient();
+  const headersList = await headers();
+  const origin = headersList.get("origin") || "http://localhost:3000";
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${origin}/auth/callback`,
+    },
+  });
+
+  if (error) return { error: error.message };
+  if (data.url) redirect(data.url);
+}
+```
+
+### Protected Layout Pattern
 ```tsx
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-export default async function ProtectedPage() {
+export default async function ProtectedLayout({ children }) {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
   
   if (error || !data?.user) {
     redirect("/login");
   }
-  
-  // Page content...
+
+  // Fetch additional profile data
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", data.user.id)
+    .single();
+
+  return <Layout user={profile}>{children}</Layout>;
 }
 ```
 
-### Form with Validation Pattern
+### Test File Pattern
 ```tsx
-"use client";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { Component } from "@/components/ui/component";
 
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-
-const schema = z.object({
-  field: z.string().min(1, "Required"),
-});
-
-type FormData = z.infer<typeof schema>;
-
-export function MyForm() {
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+describe("Component", () => {
+  it("renders correctly", () => {
+    render(<Component>Text</Component>);
+    expect(screen.getByText("Text")).toBeInTheDocument();
   });
-  
-  const onSubmit = async (data: FormData) => {
-    // Handle submission
-  };
-  
-  return <form onSubmit={handleSubmit(onSubmit)}>...</form>;
-}
+
+  it("handles user interaction", async () => {
+    const user = userEvent.setup();
+    const handleClick = jest.fn();
+    render(<Component onClick={handleClick}>Click</Component>);
+    
+    await user.click(screen.getByRole("button"));
+    expect(handleClick).toHaveBeenCalled();
+  });
+});
 ```
 
 ---
@@ -249,9 +318,64 @@ export function MyForm() {
 - Create policies before inserting data
 - Test policies in Supabase dashboard
 
+### Storage Buckets
+- `avatars` bucket created with RLS policies
+- Max file size: 2MB
+- Allowed types: image/jpeg, image/png, image/gif, image/webp
+
 ### Type Safety
-- Generate types: `npx supabase gen types typescript --project-id <id> > src/types/database.ts`
+- Generate types: `npx supabase gen types typescript --project-id cizakzarkdgieclbwljy > src/types/database.ts`
 - Use generated types in services
+
+---
+
+## DATABASE SCHEMA
+
+### Tables Created
+| Table | Purpose |
+|-------|---------|
+| `profiles` | User profiles (extends auth.users) |
+| `groups` | Expense sharing groups |
+| `group_members` | Group membership junction |
+| `expenses` | Individual expenses |
+| `expense_splits` | Who owes what per expense |
+| `settlements` | Payment records |
+| `friendships` | Friend connections |
+| `activities` | Activity feed log |
+
+### Custom Types
+- `expense_category`: food, transport, entertainment, utilities, rent, shopping, travel, healthcare, groceries, other
+- `split_type`: equal, exact, percentage
+- `member_role`: admin, member
+- `friendship_status`: pending, accepted, blocked
+
+### Key Functions
+- `get_group_balances(group_uuid)` - Calculate who owes whom in a group
+- `handle_new_user()` - Auto-create profile on user signup (trigger)
+- `update_updated_at_column()` - Auto-update timestamps (trigger)
+
+---
+
+## TESTING RULES
+
+### Always Create Tests For:
+- New UI components (`src/__tests__/components/`)
+- New services (`src/__tests__/services/`)
+- New utilities (`src/__tests__/lib/`)
+- Complex business logic
+
+### Test Commands
+```bash
+npm test              # Run all tests
+npm run test:watch    # Watch mode
+npm run test:coverage # Coverage report
+```
+
+### Coverage Thresholds
+- Branches: 70%
+- Functions: 70%
+- Lines: 70%
+- Statements: 70%
 
 ---
 
@@ -262,6 +386,7 @@ export function MyForm() {
 3. Use RLS policies for data access control
 4. Sanitize user-generated content before display
 5. Use HTTPS in production
+6. Validate file uploads (size, type) before processing
 
 ---
 
@@ -269,94 +394,137 @@ export function MyForm() {
 
 1. Use React Server Components for data fetching
 2. Lazy load heavy components with `dynamic()`
-3. Optimize images with `next/image`
+3. Optimize images with `next/image` (add `unoptimized` for dynamic URLs)
 4. Minimize "use client" components
 5. Use Suspense boundaries for loading states
 
 ---
 
 ## LEARNINGS & DECISIONS LOG
-<!-- Append new entries at the top with date -->
+
+### 2024-12-10: Session 2 - Full Feature Build
+
+#### Database & Schema:
+- Created complete database schema with 8 tables
+- Used `gen_random_uuid()` instead of `uuid_generate_v4()` (built-in, no extension needed)
+- Added RLS policies for all tables
+- Created `avatars` storage bucket with upload/delete policies
+
+#### Authentication:
+- Email/password auth working
+- Google OAuth configured (requires Google Cloud Console setup)
+- GitHub OAuth configured (requires GitHub Developer settings)
+- OAuth callback route at `/auth/callback`
+- Error handling for auth errors (otp_expired, access_denied) via URL params
+
+#### Dashboard & Navigation:
+- Created Navbar component with profile dropdown
+- Mobile-responsive hamburger menu
+- Navigation links: Dashboard, Groups, Expenses, Activity
+- Profile dropdown with settings and logout
+- Dashboard layout fetches profile from database for latest avatar
+
+#### Profile System:
+- Profile settings page with full CRUD
+- Avatar upload to Supabase Storage (2MB limit, image types only)
+- Avatar delete functionality
+- Profile service (`src/services/profile.ts`) for all profile operations
+- Form with Zod validation for name, phone, currency
+
+#### Testing Setup:
+- Jest configured with Next.js integration
+- React Testing Library for component tests
+- 66 tests passing across 5 test suites
+- Test files mirror src/ structure
+
+#### Image Handling:
+- Configured `next.config.ts` for external images
+- Allowed domains: Google (lh3.googleusercontent.com), GitHub (avatars.githubusercontent.com), Supabase storage
+- Use `unoptimized` prop for dynamic Supabase URLs
 
 ### 2024-12-10: Session 1 - Project Bootstrap
 
 #### Decisions Made:
-- **Fonts**: Plus Jakarta Sans (headings) + Inter (body) - modern, distinctive, not generic
-- **Primary Color**: Teal (#14b8a6) - represents trust, money, balance
-- **Auth Layout**: Split-screen design (branding left, form right on desktop)
-- **Utility Function**: Created `cn()` with clsx + tailwind-merge for class handling
-- **Component Variants**: Using CVA (class-variance-authority) for variant management
+- **Fonts**: Plus Jakarta Sans (headings) + Inter (body)
+- **Primary Color**: Teal (#14b8a6)
+- **Auth Layout**: Split-screen design
+- **Utility Function**: `cn()` with clsx + tailwind-merge
+- **Component Variants**: CVA (class-variance-authority)
 
 #### Architecture Established:
 - Supabase SSR setup with @supabase/ssr
 - Middleware handles session refresh + route protection
 - Protected routes pattern: `/dashboard/*` requires auth
-- Auth callback route: `/auth/callback` for OAuth/email confirmation
-- Server actions in `src/app/(auth)/actions.ts` for auth operations
-
-#### Components Created:
-- `Button` - 6 variants (primary, secondary, outline, ghost, danger, link), 4 sizes, loading state
-- `Input` - With label, error message, helper text support
-- `Card` - CardHeader, CardTitle, CardDescription, CardContent, CardFooter
-
-#### Pages Created:
-- `/` - Landing page (hero, features, how-it-works, CTA, footer)
-- `/login` - Login form with validation, social login buttons
-- `/register` - Registration with password requirements
-- `/dashboard` - Protected dashboard showing user info
 
 ---
 
 ## MISTAKES & CORRECTIONS
-<!-- Document errors made and how they were fixed - helps avoid repeating -->
 
 ### 2024-12-10
-- **Mistake**: Initially used wrong Supabase key format (`sb_publishable_...`)
-- **Correction**: Must use anon key in JWT format (`eyJ...`)
-- **Prevention**: Always verify key format matches `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+- **Mistake**: Used `uuid_generate_v4()` which doesn't exist in Supabase
+- **Correction**: Use `gen_random_uuid()` which is built-in
+- **Prevention**: Always use `gen_random_uuid()` for UUID generation
 
-- **Mistake**: Auth errors from Supabase (otp_expired, access_denied) were not handled gracefully
-- **Correction**: Added `useSearchParams()` to read URL error params and display user-friendly messages
-- **Prevention**: Always handle error query params on auth pages and map error codes to friendly messages
+- **Mistake**: Used wrong Supabase key format (`sb_publishable_...`)
+- **Correction**: Must use anon key in JWT format (`eyJ...`)
+- **Prevention**: Verify key format matches JWT structure
+
+- **Mistake**: Auth errors not handled gracefully
+- **Correction**: Added `useSearchParams()` + `useMemo()` to read URL error params
+- **Prevention**: Always handle error query params on auth pages
+
+- **Mistake**: External images not loading (Google avatars)
+- **Correction**: Added domains to `next.config.ts` remotePatterns
+- **Prevention**: Always configure image domains for external sources
+
+- **Mistake**: Jest import error with `next/jest`
+- **Correction**: Use `next/jest.js` (with .js extension)
+- **Prevention**: Check Next.js docs for correct import paths
 
 ---
 
 ## PENDING DECISIONS
-<!-- Open questions to resolve in future conversations -->
 
 - [ ] State management approach (Context vs Zustand vs none)
-- [ ] Image upload strategy for receipts (Supabase Storage config)
 - [ ] Push notification implementation (Web Push vs third-party)
 - [ ] Offline support requirements (PWA?)
-- [ ] Currency handling (multi-currency support? conversion?)
 - [ ] Settlement methods (PayPal, Venmo integration?)
 - [ ] Email templates for notifications
 - [ ] Mobile app strategy (React Native, PWA, or web-only?)
 
 ---
 
+## RESOLVED DECISIONS
+
+- [x] Image upload strategy → Supabase Storage with `avatars` bucket
+- [x] Currency handling → User preference stored in profile, 8 currencies supported
+
+---
+
 ## WHAT'S WORKING WELL
-<!-- Patterns and approaches that are proving effective -->
 
 - CVA for component variants - clean, type-safe, easy to extend
 - Server Actions for mutations - simpler than API routes
 - Split-screen auth layout - looks professional, mobile-friendly
 - Tailwind + cn() utility - fast styling, no conflicts
+- Service layer pattern - clean separation of concerns
+- Jest + RTL for testing - good developer experience
+- Supabase Storage for files - simple API, RLS support
 
 ---
 
 ## WHAT NEEDS IMPROVEMENT
-<!-- Areas identified for future refactoring -->
 
 - [ ] Add loading skeletons for better UX
 - [ ] Implement toast notifications for feedback
 - [ ] Add error boundaries for graceful failures
-- [ ] Create shared form components to reduce duplication
+- [ ] Build Groups CRUD functionality
+- [ ] Build Expenses CRUD functionality
+- [ ] Add activity feed with real-time updates
 
 ---
 
 ## AVOID (ANTI-PATTERNS)
-<!-- Things that caused issues or should never be done -->
 
 ❌ Don't use CSS modules or styled-components
 ❌ Don't use Pages Router patterns
@@ -370,11 +538,13 @@ export function MyForm() {
 ❌ Don't commit .env files
 ❌ Don't use generic fonts (Arial, Roboto, system-ui as primary)
 ❌ Don't ignore TypeScript errors - fix them properly
+❌ Don't skip writing tests for new components/services
+❌ Don't use `uuid_generate_v4()` - use `gen_random_uuid()`
+❌ Don't forget to add external image domains to next.config.ts
 
 ---
 
 ## FILE REGISTRY
-<!-- Track important files and their purposes -->
 
 | File | Purpose | Last Modified |
 |------|---------|---------------|
@@ -383,17 +553,51 @@ export function MyForm() {
 | `src/lib/supabase/server.ts` | Server Supabase client | 2024-12-10 |
 | `src/lib/supabase/middleware.ts` | Session refresh logic | 2024-12-10 |
 | `src/middleware.ts` | Route protection | 2024-12-10 |
-| `src/app/(auth)/actions.ts` | Auth server actions | 2024-12-10 |
+| `src/app/(auth)/actions.ts` | Auth server actions (login, register, OAuth) | 2024-12-10 |
 | `src/components/ui/button.tsx` | Button component with CVA | 2024-12-10 |
 | `src/components/ui/input.tsx` | Input component | 2024-12-10 |
 | `src/components/ui/card.tsx` | Card component family | 2024-12-10 |
+| `src/components/layout/navbar.tsx` | Dashboard navbar with profile dropdown | 2024-12-10 |
+| `src/services/profile.ts` | Profile CRUD and avatar upload | 2024-12-10 |
+| `src/app/(dashboard)/layout.tsx` | Protected dashboard layout | 2024-12-10 |
+| `src/app/(dashboard)/settings/profile/` | Profile settings page | 2024-12-10 |
+| `src/types/database.ts` | Generated Supabase types | 2024-12-10 |
+| `supabase/migrations/` | Database migrations | 2024-12-10 |
+| `jest.config.ts` | Jest configuration | 2024-12-10 |
+| `jest.setup.ts` | Test setup and mocks | 2024-12-10 |
+| `next.config.ts` | Next.js config with image domains | 2024-12-10 |
+
+---
+
+## DOCUMENTATION REQUIREMENTS
+
+### Always Update These Docs:
+- `docs/CHANGELOG.md` - Add entries for new features/fixes
+- `docs/development/database.md` - When schema changes
+- `docs/development/components.md` - When adding components
+- `docs/api/services.md` - When adding services
+- `.cursorrules` - Every conversation end
+
+### Documentation Structure:
+```
+docs/
+├── README.md              # Quick start guide
+├── CHANGELOG.md           # Version history
+├── development/
+│   ├── architecture.md    # System architecture
+│   ├── database.md        # Database schema
+│   └── components.md      # Component library
+├── api/
+│   └── services.md        # Service layer docs
+└── guides/                # User guides (future)
+```
 
 ---
 
 ## NEXT SESSION PRIORITIES
-<!-- What to work on next -->
 
-1. Test and verify auth flow end-to-end
-2. Create database schema in Supabase
-3. Build groups feature (CRUD)
-4. Build expense creation flow
+1. Build Groups feature (create, list, edit, delete, invite members)
+2. Build Expenses feature (add expense, split calculation)
+3. Implement real-time activity feed
+4. Add toast notifications for user feedback
+5. Push code to GitHub (resolve auth issues)
