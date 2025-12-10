@@ -1,10 +1,38 @@
 # Smart Split - Cursor Rules
-# This ruleset evolves with each conversation. Update the LEARNINGS section as decisions are made.
+# VERSION: 1.0.0 | LAST UPDATED: 2024-12-10
+# 
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  SELF-EVOLVING RULESET                                                     ║
+# ║  This file MUST be updated at the end of every conversation.              ║
+# ║  Read the EVOLUTION PROTOCOL section for instructions.                     ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+
+---
+
+## EVOLUTION PROTOCOL
+
+### How This File Evolves:
+1. **START of conversation**: Read this entire file to understand current state
+2. **DURING conversation**: Note any new patterns, decisions, or learnings
+3. **END of conversation**: Update relevant sections below:
+   - Add to LEARNINGS LOG with date
+   - Move resolved items from PENDING to LEARNINGS
+   - Add new questions to PENDING DECISIONS
+   - Update MISTAKES & CORRECTIONS if errors were made
+   - Increment version if significant changes
+
+### Version Format: MAJOR.MINOR.PATCH
+- MAJOR: Breaking architecture changes
+- MINOR: New features/patterns added
+- PATCH: Small fixes, clarifications
+
+---
 
 ## PROJECT IDENTITY
 - **Name**: Smart Split
 - **Type**: Expense sharing application (Splitwise clone)
 - **Stack**: Next.js 16 (App Router), TypeScript, Supabase, Tailwind CSS 4
+- **Started**: 2024-12-10
 
 ---
 
@@ -26,6 +54,23 @@
 ### Form Handling
 - **Validation**: Zod schemas
 - **Forms**: react-hook-form with @hookform/resolvers
+
+### Dependencies (Current)
+```json
+{
+  "next": "16.0.8",
+  "react": "19.2.1",
+  "@supabase/supabase-js": "latest",
+  "@supabase/ssr": "latest",
+  "tailwindcss": "4.x",
+  "class-variance-authority": "latest",
+  "clsx": "latest",
+  "tailwind-merge": "latest",
+  "lucide-react": "latest",
+  "react-hook-form": "latest",
+  "zod": "latest"
+}
+```
 
 ---
 
@@ -90,67 +135,103 @@ src/
 
 ---
 
-## COMPONENT PATTERNS
+## ESTABLISHED PATTERNS
 
-### UI Components (src/components/ui/)
+### UI Components Pattern (src/components/ui/)
 ```tsx
-// Always use forwardRef for flexibility
-// Always accept className for customization
-// Use CVA for variants
-
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 import { cva, type VariantProps } from "class-variance-authority";
 
-const buttonVariants = cva("base-classes", {
+const componentVariants = cva("base-classes", {
   variants: { variant: {}, size: {} },
   defaultVariants: {},
 });
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-  VariantProps<typeof buttonVariants> {}
+interface ComponentProps extends React.HTMLAttributes<HTMLElement>,
+  VariantProps<typeof componentVariants> {}
 
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+const Component = forwardRef<HTMLElement, ComponentProps>(
   ({ className, variant, size, ...props }, ref) => (
-    <button
+    <element
       ref={ref}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(componentVariants({ variant, size, className }))}
       {...props}
     />
   )
 );
-Button.displayName = "Button";
+Component.displayName = "Component";
 
-export { Button, buttonVariants };
+export { Component, componentVariants };
 ```
 
-### Feature Components
+### Server Action Pattern
 ```tsx
-// Keep business logic in hooks/services
-// Component only handles rendering
+"use server";
 
-export function ExpenseList({ groupId }: { groupId: string }) {
-  const { expenses, isLoading } = useExpenses(groupId);
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+
+export async function actionName(formData: FormData) {
+  const supabase = await createClient();
   
-  if (isLoading) return <Skeleton />;
+  // 1. Extract and validate input
+  const input = formData.get("field") as string;
   
-  return expenses.map(expense => <ExpenseCard key={expense.id} expense={expense} />);
+  // 2. Perform operation
+  const { data, error } = await supabase.from("table").insert({});
+  
+  // 3. Handle errors
+  if (error) return { error: error.message };
+  
+  // 4. Revalidate and redirect on success
+  revalidatePath("/path");
+  redirect("/destination");
 }
 ```
 
-### Server Actions
+### Protected Page Pattern
 ```tsx
-// Always in separate files with "use server"
-// Return { error: string } on failure, redirect on success
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 
-"use server";
-
-export async function createExpense(formData: FormData) {
+export default async function ProtectedPage() {
   const supabase = await createClient();
-  // ... validation and logic
-  if (error) return { error: error.message };
-  revalidatePath("/dashboard");
-  redirect("/expenses");
+  const { data, error } = await supabase.auth.getUser();
+  
+  if (error || !data?.user) {
+    redirect("/login");
+  }
+  
+  // Page content...
+}
+```
+
+### Form with Validation Pattern
+```tsx
+"use client";
+
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+const schema = z.object({
+  field: z.string().min(1, "Required"),
+});
+
+type FormData = z.infer<typeof schema>;
+
+export function MyForm() {
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  });
+  
+  const onSubmit = async (data: FormData) => {
+    // Handle submission
+  };
+  
+  return <form onSubmit={handleSubmit(onSubmit)}>...</form>;
 }
 ```
 
@@ -195,50 +276,120 @@ export async function createExpense(formData: FormData) {
 ---
 
 ## LEARNINGS & DECISIONS LOG
-<!-- This section is updated after each conversation with key decisions -->
+<!-- Append new entries at the top with date -->
 
-### 2024-12-10: Project Initialization
-- Chose Plus Jakarta Sans + Inter fonts for modern, distinctive look
-- Teal (#14b8a6) as primary color - represents trust/money/balance
-- Auth layout: split-screen design (branding left, form right)
-- Created cn() utility with clsx + tailwind-merge for class handling
-- Using CVA (class-variance-authority) for component variants
+### 2024-12-10: Session 1 - Project Bootstrap
 
-### 2024-12-10: Supabase Setup
-- Using @supabase/ssr for server-side auth
-- Middleware handles session refresh and route protection
-- Protected routes: /dashboard/*
-- Auth callback route: /auth/callback for OAuth/email confirmation
-- Server actions in src/app/(auth)/actions.ts for login/register/signOut
+#### Decisions Made:
+- **Fonts**: Plus Jakarta Sans (headings) + Inter (body) - modern, distinctive, not generic
+- **Primary Color**: Teal (#14b8a6) - represents trust, money, balance
+- **Auth Layout**: Split-screen design (branding left, form right on desktop)
+- **Utility Function**: Created `cn()` with clsx + tailwind-merge for class handling
+- **Component Variants**: Using CVA (class-variance-authority) for variant management
 
-### 2024-12-10: UI Component Library
-- Created: Button (6 variants, 4 sizes, loading state), Input (with label/error), Card
-- All components use forwardRef for flexibility
-- Exported from src/components/ui/index.ts barrel file
+#### Architecture Established:
+- Supabase SSR setup with @supabase/ssr
+- Middleware handles session refresh + route protection
+- Protected routes pattern: `/dashboard/*` requires auth
+- Auth callback route: `/auth/callback` for OAuth/email confirmation
+- Server actions in `src/app/(auth)/actions.ts` for auth operations
+
+#### Components Created:
+- `Button` - 6 variants (primary, secondary, outline, ghost, danger, link), 4 sizes, loading state
+- `Input` - With label, error message, helper text support
+- `Card` - CardHeader, CardTitle, CardDescription, CardContent, CardFooter
+
+#### Pages Created:
+- `/` - Landing page (hero, features, how-it-works, CTA, footer)
+- `/login` - Login form with validation, social login buttons
+- `/register` - Registration with password requirements
+- `/dashboard` - Protected dashboard showing user info
+
+---
+
+## MISTAKES & CORRECTIONS
+<!-- Document errors made and how they were fixed - helps avoid repeating -->
+
+### 2024-12-10
+- **Mistake**: Initially used wrong Supabase key format (`sb_publishable_...`)
+- **Correction**: Must use anon key in JWT format (`eyJ...`)
+- **Prevention**: Always verify key format matches `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
 
 ---
 
 ## PENDING DECISIONS
-<!-- Questions to resolve in future conversations -->
+<!-- Open questions to resolve in future conversations -->
 
 - [ ] State management approach (Context vs Zustand vs none)
-- [ ] Image upload strategy for receipts
-- [ ] Push notification implementation
-- [ ] Offline support requirements
-- [ ] Currency handling (multi-currency support?)
+- [ ] Image upload strategy for receipts (Supabase Storage config)
+- [ ] Push notification implementation (Web Push vs third-party)
+- [ ] Offline support requirements (PWA?)
+- [ ] Currency handling (multi-currency support? conversion?)
+- [ ] Settlement methods (PayPal, Venmo integration?)
+- [ ] Email templates for notifications
+- [ ] Mobile app strategy (React Native, PWA, or web-only?)
 
 ---
 
-## AVOID
+## WHAT'S WORKING WELL
+<!-- Patterns and approaches that are proving effective -->
+
+- CVA for component variants - clean, type-safe, easy to extend
+- Server Actions for mutations - simpler than API routes
+- Split-screen auth layout - looks professional, mobile-friendly
+- Tailwind + cn() utility - fast styling, no conflicts
+
+---
+
+## WHAT NEEDS IMPROVEMENT
+<!-- Areas identified for future refactoring -->
+
+- [ ] Add loading skeletons for better UX
+- [ ] Implement toast notifications for feedback
+- [ ] Add error boundaries for graceful failures
+- [ ] Create shared form components to reduce duplication
+
+---
+
+## AVOID (ANTI-PATTERNS)
+<!-- Things that caused issues or should never be done -->
 
 ❌ Don't use CSS modules or styled-components
 ❌ Don't use Pages Router patterns
 ❌ Don't fetch data in client components when server components work
 ❌ Don't create API routes when Server Actions suffice
-❌ Don't use `any` type
-❌ Don't skip form validation
+❌ Don't use `any` type - use `unknown` if truly unknown
+❌ Don't skip form validation with Zod
 ❌ Don't hardcode colors - use Tailwind classes
 ❌ Don't create new components for one-time use
 ❌ Don't skip error handling in async operations
 ❌ Don't commit .env files
+❌ Don't use generic fonts (Arial, Roboto, system-ui as primary)
+❌ Don't ignore TypeScript errors - fix them properly
 
+---
+
+## FILE REGISTRY
+<!-- Track important files and their purposes -->
+
+| File | Purpose | Last Modified |
+|------|---------|---------------|
+| `src/lib/utils.ts` | cn() utility function | 2024-12-10 |
+| `src/lib/supabase/client.ts` | Browser Supabase client | 2024-12-10 |
+| `src/lib/supabase/server.ts` | Server Supabase client | 2024-12-10 |
+| `src/lib/supabase/middleware.ts` | Session refresh logic | 2024-12-10 |
+| `src/middleware.ts` | Route protection | 2024-12-10 |
+| `src/app/(auth)/actions.ts` | Auth server actions | 2024-12-10 |
+| `src/components/ui/button.tsx` | Button component with CVA | 2024-12-10 |
+| `src/components/ui/input.tsx` | Input component | 2024-12-10 |
+| `src/components/ui/card.tsx` | Card component family | 2024-12-10 |
+
+---
+
+## NEXT SESSION PRIORITIES
+<!-- What to work on next -->
+
+1. Test and verify auth flow end-to-end
+2. Create database schema in Supabase
+3. Build groups feature (CRUD)
+4. Build expense creation flow
