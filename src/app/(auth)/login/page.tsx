@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -26,7 +26,7 @@ const errorMessages: Record<string, string> = {
     auth_callback_error: "Authentication failed. Please try again.",
 };
 
-export default function LoginPage() {
+function LoginForm() {
     const searchParams = useSearchParams();
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -251,5 +251,19 @@ export default function LoginPage() {
                 </Link>
             </p>
         </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex items-center justify-center py-12">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-teal-600 border-t-transparent" />
+                </div>
+            }
+        >
+            <LoginForm />
+        </Suspense>
     );
 }
