@@ -4,10 +4,19 @@ import Link from "next/link";
 import { Users, Calendar, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { GroupWithMembers } from "@/services/groups";
+
+// Generic group type that works with both client and server services
+interface GroupCardGroup {
+    id: string;
+    name: string;
+    description: string | null;
+    category: string | null;
+    updated_at: string | null;
+    member_count: number;
+}
 
 interface GroupCardProps {
-    group: GroupWithMembers;
+    group: GroupCardGroup;
 }
 
 const categoryColors: Record<string, "default" | "primary" | "success" | "warning" | "danger" | "info"> = {
