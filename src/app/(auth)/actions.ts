@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { headers } from "next/headers";
 
 export async function login(formData: FormData) {
     const supabase = await createClient();
@@ -57,13 +56,16 @@ export async function signOut() {
 
 export async function signInWithGoogle() {
     const supabase = await createClient();
-    const headersList = await headers();
-    const origin = headersList.get("origin") || "http://localhost:3000";
+
+    // Get the site URL - prioritize explicit config, then Vercel auto-detected URL
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+        || "http://localhost:3000";
 
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-            redirectTo: `${origin}/auth/callback`,
+            redirectTo: `${siteUrl}/auth/callback`,
         },
     });
 
@@ -78,13 +80,16 @@ export async function signInWithGoogle() {
 
 export async function signInWithGithub() {
     const supabase = await createClient();
-    const headersList = await headers();
-    const origin = headersList.get("origin") || "http://localhost:3000";
+
+    // Get the site URL - prioritize explicit config, then Vercel auto-detected URL
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+        || "http://localhost:3000";
 
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-            redirectTo: `${origin}/auth/callback`,
+            redirectTo: `${siteUrl}/auth/callback`,
         },
     });
 

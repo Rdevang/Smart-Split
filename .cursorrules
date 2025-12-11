@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.0.0 | LAST UPDATED: 2024-12-10
+# VERSION: 2.1.0 | LAST UPDATED: 2024-12-11
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -402,6 +402,31 @@ npm run test:coverage # Coverage report
 
 ## LEARNINGS & DECISIONS LOG
 
+### 2024-12-11: Session 3 - Vercel Deployment
+
+#### Deployment:
+- Successfully deployed to Vercel at `https://smart-split-one.vercel.app`
+- Production URL is different from preview URLs (use `--prod` flag)
+- Environment variables MUST be set in Vercel Dashboard before deployment
+
+#### OAuth Production Setup:
+- OAuth redirect URLs must be configured for production domain
+- Google Cloud Console: Add production URL to authorized origins + redirect URIs
+- Supabase Dashboard: Add production URL to Site URL and Redirect URLs
+- Use `NEXT_PUBLIC_SITE_URL` env var for reliable OAuth redirects (don't rely on `headers().get("origin")`)
+
+#### Middleware Edge Runtime:
+- Middleware runs on Vercel Edge - must handle missing env vars gracefully
+- Added null checks for environment variables in middleware
+- Server actions also need env var validation
+
+#### Environment Variables Pattern:
+```
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
+```
+
 ### 2024-12-10: Session 2 - Full Feature Build
 
 #### Database & Schema:
@@ -460,6 +485,19 @@ npm run test:coverage # Coverage report
 
 ## MISTAKES & CORRECTIONS
 
+### 2024-12-11
+- **Mistake**: OAuth not working in production - `headers().get("origin")` returns null on Vercel
+- **Correction**: Use `NEXT_PUBLIC_SITE_URL` env var instead of headers
+- **Prevention**: Always use explicit env vars for site URLs, never rely on request headers
+
+- **Mistake**: 500 errors on Vercel due to missing env vars with `!` assertion
+- **Correction**: Added null checks and descriptive error messages in Supabase clients
+- **Prevention**: Always validate env vars exist before using them, provide helpful error messages
+
+- **Mistake**: Middleware crashes when env vars undefined
+- **Correction**: Added early return with `NextResponse.next()` if env vars missing
+- **Prevention**: Edge runtime code must handle missing config gracefully
+
 ### 2024-12-10
 - **Mistake**: Used `uuid_generate_v4()` which doesn't exist in Supabase
 - **Correction**: Use `gen_random_uuid()` which is built-in
@@ -498,6 +536,8 @@ npm run test:coverage # Coverage report
 
 - [x] Image upload strategy → Supabase Storage with `avatars` bucket
 - [x] Currency handling → User preference stored in profile, 8 currencies supported
+- [x] Deployment platform → Vercel with `NEXT_PUBLIC_SITE_URL` for OAuth redirects
+- [x] Production URL → https://smart-split-one.vercel.app
 
 ---
 
@@ -510,6 +550,8 @@ npm run test:coverage # Coverage report
 - Service layer pattern - clean separation of concerns
 - Jest + RTL for testing - good developer experience
 - Supabase Storage for files - simple API, RLS support
+- Vercel deployment - seamless CI/CD, automatic preview deployments
+- Google OAuth - working in production with proper redirect URLs
 
 ---
 
@@ -541,6 +583,9 @@ npm run test:coverage # Coverage report
 ❌ Don't skip writing tests for new components/services
 ❌ Don't use `uuid_generate_v4()` - use `gen_random_uuid()`
 ❌ Don't forget to add external image domains to next.config.ts
+❌ Don't use `headers().get("origin")` for OAuth redirects - use env vars
+❌ Don't use `!` assertions on env vars - always validate first
+❌ Don't forget to set env vars on Vercel before deploying
 
 ---
 
@@ -600,4 +645,5 @@ docs/
 2. Build Expenses feature (add expense, split calculation)
 3. Implement real-time activity feed
 4. Add toast notifications for user feedback
-5. Push code to GitHub (resolve auth issues)
+5. Add forgot-password page (currently 404)
+6. GitHub OAuth setup (configure in GitHub Developer settings)

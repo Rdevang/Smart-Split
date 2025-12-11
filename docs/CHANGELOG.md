@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2024-12-11
+
+### Added
+
+#### Deployment
+- Vercel production deployment at `https://smart-split-one.vercel.app`
+- `vercel.json` configuration file
+- `NEXT_PUBLIC_SITE_URL` environment variable for OAuth redirects
+
+### Fixed
+
+#### OAuth Production Issues
+- Fixed OAuth redirect URL using explicit environment variable instead of `headers().get("origin")`
+- OAuth now works correctly in both development and production
+
+#### Middleware Stability
+- Added null checks for environment variables in middleware
+- Middleware now gracefully handles missing configuration
+- Better error messages when Supabase env vars are missing
+
+#### Server-side Error Handling
+- Added validation for Supabase environment variables in server client
+- Descriptive error messages help debug missing configuration
+
+### Technical Details
+
+- Production URL: `https://smart-split-one.vercel.app`
+- Vercel CLI deployment with `--prod` flag
+- Environment variables must be set in Vercel Dashboard
+
+---
+
 ## [2.0.0] - 2024-12-10
 
 ### Added
@@ -138,6 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.1.0 | 2024-12-11 | Vercel deployment, OAuth production fixes |
 | 2.0.0 | 2024-12-10 | Full auth, database schema, profile system, testing |
 | 1.0.0 | 2024-12-10 | Project bootstrap, landing page, auth UI |
 
