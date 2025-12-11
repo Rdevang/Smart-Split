@@ -5,8 +5,20 @@ type Group = Database["public"]["Tables"]["groups"]["Row"];
 type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
+export interface PlaceholderMember {
+    id: string;
+    name: string;
+    email: string | null;
+}
+
+export interface MemberWithProfile extends GroupMember {
+    profile: Profile | null;
+    placeholder: PlaceholderMember | null;
+    is_placeholder: boolean;
+}
+
 export interface GroupWithMembers extends Group {
-    members: (GroupMember & { profile: Profile })[];
+    members: MemberWithProfile[];
     member_count: number;
 }
 
@@ -32,13 +44,33 @@ export interface PaginatedResult<T> {
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
+// Raw member type from Supabase query
+interface RawGroupMember {
+    id: string;
+    user_id: string | null;
+    placeholder_id: string | null;
+    role: string;
+    joined_at: string;
+    profile: {
+        id: string;
+        email: string;
+        full_name: string | null;
+        avatar_url: string | null;
+    } | null;
+    placeholder: {
+        id: string;
+        name: string;
+        email: string | null;
+    } | null;
+}
+
 export const groupsServerService = {
     /**
      * Get paginated groups for a user
      * Optimized: Uses covering index, limits JOIN depth
      */
     async getGroups(
-        userId: string, 
+        userId: string,
         params: PaginationParams = {}
     ): Promise<PaginatedResult<GroupWithMembers>> {
         const supabase = await createClient();
@@ -58,7 +90,7 @@ export const groupsServerService = {
         }
 
         const groupIds = memberGroups.map((m) => m.group_id);
-        
+
         if (groupIds.length === 0) {
             return { data: [], total: 0, page, limit, hasMore: false };
         }
@@ -71,13 +103,19 @@ export const groupsServerService = {
                 group_members (
                     id,
                     user_id,
+                    placeholder_id,
                     role,
                     joined_at,
-                    profile:profiles!inner (
+                    profile:profiles (
                         id,
                         email,
                         full_name,
                         avatar_url
+                    ),
+                    placeholder:placeholder_members (
+                        id,
+                        name,
+                        email
                     )
                 )
             `, { count: "exact" })
@@ -93,7 +131,12 @@ export const groupsServerService = {
         const total = count || 0;
         const data = groups.map((group) => ({
             ...group,
-            members: (group.group_members || []) as (GroupMember & { profile: Profile })[],
+            members: (group.group_members || []).map((m: RawGroupMember) => ({
+                ...m,
+                profile: m.profile || null,
+                placeholder: m.placeholder || null,
+                is_placeholder: m.placeholder_id !== null,
+            })) as MemberWithProfile[],
             member_count: group.group_members?.length || 0,
         }));
 
@@ -120,13 +163,19 @@ export const groupsServerService = {
                 group_members (
                     id,
                     user_id,
+                    placeholder_id,
                     role,
                     joined_at,
-                    profile:profiles!inner (
+                    profile:profiles (
                         id,
                         email,
                         full_name,
                         avatar_url
+                    ),
+                    placeholder:placeholder_members (
+                        id,
+                        name,
+                        email
                     )
                 )
             `)
@@ -140,7 +189,12 @@ export const groupsServerService = {
 
         return {
             ...group,
-            members: (group.group_members || []) as (GroupMember & { profile: Profile })[],
+            members: (group.group_members || []).map((m: RawGroupMember) => ({
+                ...m,
+                profile: m.profile || null,
+                placeholder: m.placeholder || null,
+                is_placeholder: m.placeholder_id !== null,
+            })) as MemberWithProfile[],
             member_count: group.group_members?.length || 0,
         };
     },

@@ -190,28 +190,47 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {group.members.map((member) => {
-                                const memberBalance = balances.find((b) => b.user_id === member.user_id)?.balance || 0;
+                                const isPlaceholder = member.is_placeholder;
+                                const memberName = isPlaceholder
+                                    ? member.placeholder?.name
+                                    : member.profile?.full_name;
+                                const memberAvatar = isPlaceholder
+                                    ? null
+                                    : member.profile?.avatar_url;
+                                const memberId = isPlaceholder
+                                    ? member.placeholder?.id
+                                    : member.user_id;
+                                const memberBalance = balances.find((b) => b.user_id === memberId)?.balance || 0;
+
                                 return (
                                     <div key={member.id} className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
-                                            {member.profile?.avatar_url ? (
+                                            {memberAvatar ? (
                                                 <Image
-                                                    src={member.profile.avatar_url}
-                                                    alt={member.profile.full_name || ""}
+                                                    src={memberAvatar}
+                                                    alt={memberName || ""}
                                                     width={36}
                                                     height={36}
                                                     className="rounded-full"
                                                     unoptimized
                                                 />
                                             ) : (
-                                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-500 text-sm font-medium text-white">
-                                                    {member.profile?.full_name?.[0] || "?"}
+                                                <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium text-white ${isPlaceholder
+                                                        ? "bg-gray-400 dark:bg-gray-600"
+                                                        : "bg-teal-500"
+                                                    }`}>
+                                                    {memberName?.[0]?.toUpperCase() || "?"}
                                                 </div>
                                             )}
                                             <div>
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                                    {member.user_id === user.id ? "You" : member.profile?.full_name || "Unknown"}
-                                                </p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                                        {member.user_id === user.id ? "You" : memberName || "Unknown"}
+                                                    </p>
+                                                    {isPlaceholder && (
+                                                        <Badge variant="warning" className="text-[10px]">Not signed up</Badge>
+                                                    )}
+                                                </div>
                                                 {member.role === "admin" && (
                                                     <Badge variant="default" className="text-[10px]">Admin</Badge>
                                                 )}

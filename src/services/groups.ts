@@ -274,6 +274,117 @@ export const groupsService = {
         return { success: true };
     },
 
+    async addPlaceholderMember(
+        groupId: string,
+        name: string,
+        email: string | null,
+        addedBy: string
+    ): Promise<{ success: boolean; error?: string; placeholderId?: string }> {
+        const supabase = createClient();
+
+        // If email provided, check if user already exists
+        if (email) {
+            const { data: existingProfile } = await supabase
+                .from("profiles")
+                .select("id")
+                .eq("email", email)
+                .single();
+
+            if (existingProfile) {
+                return {
+                    success: false,
+                    error: "A user with this email already exists. Use 'Add existing user' instead."
+                };
+            }
+        }
+
+        // Check if placeholder with same name already exists in group
+        const { data: existingPlaceholder } = await supabase
+            .from("placeholder_members")
+            .select("id")
+            .eq("group_id", groupId)
+            .ilike("name", name)
+            .single();
+
+        if (existingPlaceholder) {
+            return { success: false, error: "A member with this name already exists in the group" };
+        }
+
+        // Create placeholder member
+        const { data: placeholder, error: createError } = await supabase
+            .from("placeholder_members")
+            .insert({
+                name: name.trim(),
+                email: email?.trim() || null,
+                group_id: groupId,
+                created_by: addedBy,
+            })
+            .select("id")
+            .single();
+
+        if (createError) {
+            return { success: false, error: createError.message };
+        }
+
+        // Add to group_members
+        const { error: memberError } = await supabase
+            .from("group_members")
+            .insert({
+                group_id: groupId,
+                placeholder_id: placeholder.id,
+                role: "member",
+            });
+
+        if (memberError) {
+            // Rollback: delete placeholder if member insert fails
+            await supabase.from("placeholder_members").delete().eq("id", placeholder.id);
+            return { success: false, error: memberError.message };
+        }
+
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: addedBy,
+            group_id: groupId,
+            entity_type: "member",
+            entity_id: placeholder.id,
+            action: "added",
+            metadata: { member_name: name, is_placeholder: true },
+        });
+
+        return { success: true, placeholderId: placeholder.id };
+    },
+
+    async removePlaceholderMember(
+        groupId: string,
+        placeholderId: string,
+        removedBy: string
+    ): Promise<{ success: boolean; error?: string }> {
+        const supabase = createClient();
+
+        // Delete from group_members first (cascade will handle this, but explicit is clearer)
+        const { error: memberError } = await supabase
+            .from("group_members")
+            .delete()
+            .eq("group_id", groupId)
+            .eq("placeholder_id", placeholderId);
+
+        if (memberError) {
+            return { success: false, error: memberError.message };
+        }
+
+        // Delete placeholder
+        const { error } = await supabase
+            .from("placeholder_members")
+            .delete()
+            .eq("id", placeholderId);
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+
+        return { success: true };
+    },
+
     async removeMember(
         groupId: string,
         userId: string,
