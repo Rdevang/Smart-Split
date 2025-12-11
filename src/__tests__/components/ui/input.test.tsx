@@ -19,10 +19,12 @@ describe("Input", () => {
         expect(input).toHaveAttribute("id", "email-input");
     });
 
-    it("generates id from label if not provided", () => {
+    it("generates unique id if not provided (uses React useId for SSR safety)", () => {
         render(<Input label="Full Name" />);
         const input = screen.getByLabelText("Full Name");
-        expect(input).toHaveAttribute("id", "full-name");
+        // useId generates SSR-safe IDs like "_r_0_" instead of label-based IDs
+        expect(input).toHaveAttribute("id");
+        expect(input.getAttribute("id")).toBeTruthy();
     });
 
     it("displays error message", () => {
