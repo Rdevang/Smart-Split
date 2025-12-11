@@ -78,8 +78,8 @@ export function AddMemberForm({ groupId, userId }: AddMemberFormProps) {
                         setSuccess(false);
                     }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${memberType === "existing"
-                            ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
-                            : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+                        ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
                         }`}
                 >
                     <User className="h-4 w-4" />
@@ -93,8 +93,8 @@ export function AddMemberForm({ groupId, userId }: AddMemberFormProps) {
                         setSuccess(false);
                     }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${memberType === "placeholder"
-                            ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
-                            : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+                        ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
                         }`}
                 >
                     <UserRoundPlus className="h-4 w-4" />

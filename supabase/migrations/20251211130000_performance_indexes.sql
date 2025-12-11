@@ -132,8 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_friendships_friend
 -- OPTIMIZED RLS FUNCTIONS (Replace existing with indexed versions)
 -- ============================================================================
 
--- Drop and recreate with search_path for security
-DROP FUNCTION IF EXISTS public.is_group_member(UUID, UUID);
+-- Recreate with search_path for security (using CREATE OR REPLACE to preserve dependencies)
 CREATE OR REPLACE FUNCTION public.is_group_member(group_uuid UUID, user_uuid UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
@@ -149,7 +148,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-DROP FUNCTION IF EXISTS public.is_group_admin(UUID, UUID);
 CREATE OR REPLACE FUNCTION public.is_group_admin(group_uuid UUID, user_uuid UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
@@ -170,7 +168,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 -- OPTIMIZED BALANCE CALCULATION FUNCTION
 -- ============================================================================
 
-DROP FUNCTION IF EXISTS public.get_group_balances(UUID);
 CREATE OR REPLACE FUNCTION public.get_group_balances(group_uuid UUID)
 RETURNS TABLE (
     user_id UUID,

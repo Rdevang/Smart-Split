@@ -216,8 +216,8 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                                 />
                                             ) : (
                                                 <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-medium text-white ${isPlaceholder
-                                                        ? "bg-gray-400 dark:bg-gray-600"
-                                                        : "bg-teal-500"
+                                                    ? "bg-gray-400 dark:bg-gray-600"
+                                                    : "bg-teal-500"
                                                     }`}>
                                                     {memberName?.[0]?.toUpperCase() || "?"}
                                                 </div>

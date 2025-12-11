@@ -9,10 +9,12 @@ CREATE TABLE IF NOT EXISTS public.placeholder_members (
     email TEXT, -- Optional, for sending invites later
     created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     group_id UUID NOT NULL REFERENCES public.groups(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    -- Unique constraint: same name+email combo per group
-    UNIQUE(group_id, LOWER(name), COALESCE(LOWER(email), ''))
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Unique index: same name+email combo per group (case insensitive)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_placeholder_unique_name_email 
+    ON public.placeholder_members(group_id, LOWER(name), COALESCE(LOWER(email), ''));
 
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_placeholder_members_group ON public.placeholder_members(group_id);
