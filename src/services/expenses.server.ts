@@ -203,12 +203,18 @@ export const expensesServerService = {
             .reduce((sum, e) => sum + (e.amount || 0), 0);
 
         const totalOwed = (owedResult.data || [])
-            .filter((s: { expense: { paid_by: string } | null }) => s.expense?.paid_by === userId)
-            .reduce((sum: number, s: { amount: number }) => sum + (s.amount || 0), 0);
+            .filter((s) => {
+                const expense = Array.isArray(s.expense) ? s.expense[0] : s.expense;
+                return expense?.paid_by === userId;
+            })
+            .reduce((sum, s) => sum + (s.amount || 0), 0);
 
         const totalOwe = (oweResult.data || [])
-            .filter((s: { expense: { paid_by: string } | null }) => s.expense?.paid_by !== userId)
-            .reduce((sum: number, s: { amount: number }) => sum + (s.amount || 0), 0);
+            .filter((s) => {
+                const expense = Array.isArray(s.expense) ? s.expense[0] : s.expense;
+                return expense?.paid_by !== userId;
+            })
+            .reduce((sum, s) => sum + (s.amount || 0), 0);
 
         return {
             totalExpenses,
