@@ -173,7 +173,7 @@ export const expensesServerService = {
                 .from("expenses")
                 .select("amount")
                 .eq("paid_by", userId),
-            
+
             // Total others owe user (from expenses user paid)
             supabase
                 .from("expense_splits")
@@ -185,7 +185,7 @@ export const expensesServerService = {
                 `)
                 .eq("is_settled", false)
                 .neq("user_id", userId),
-            
+
             // Total user owes others
             supabase
                 .from("expense_splits")
