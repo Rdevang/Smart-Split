@@ -26,6 +26,7 @@ export interface GroupBalance {
     user_id: string;
     user_name: string;
     balance: number;
+    is_placeholder?: boolean;
 }
 
 export interface PaginationParams {
