@@ -12,11 +12,35 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { expensesService } from "@/services/expenses";
-import type { GroupWithMembers } from "@/services/groups";
 import type { Database } from "@/types/database";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
 type SplitType = Database["public"]["Enums"]["split_type"];
+
+// Generic member type that works with both client and server services
+interface GroupMember {
+    id: string;
+    user_id: string | null;
+    role: string | null;
+    is_placeholder?: boolean;
+    profile: {
+        id: string;
+        email: string;
+        full_name: string | null;
+        avatar_url: string | null;
+    } | null;
+    placeholder?: {
+        id: string;
+        name: string;
+        email: string | null;
+    } | null;
+}
+
+interface ExpenseFormGroup {
+    id: string;
+    name: string;
+    members: GroupMember[];
+}
 
 const expenseSchema = z.object({
     description: z.string().min(1, "Description is required").max(200, "Description too long"),
@@ -31,7 +55,7 @@ const expenseSchema = z.object({
 type ExpenseFormData = z.infer<typeof expenseSchema>;
 
 interface ExpenseFormProps {
-    group: GroupWithMembers;
+    group: ExpenseFormGroup;
     userId: string;
 }
 
@@ -54,13 +78,30 @@ const splitTypeOptions = [
     { value: "percentage", label: "By Percentage" },
 ];
 
+// Helper to get member ID (user_id for real users, placeholder.id for placeholders)
+const getMemberId = (member: GroupMember): string => {
+    if (member.is_placeholder && member.placeholder) {
+        return `placeholder:${member.placeholder.id}`;
+    }
+    return member.user_id || member.id;
+};
+
+// Helper to get member display name
+const getMemberName = (member: GroupMember, currentUserId: string): string => {
+    if (member.is_placeholder && member.placeholder) {
+        return member.placeholder.name;
+    }
+    if (member.user_id === currentUserId) return "You";
+    return member.profile?.full_name || member.profile?.email || "Unknown";
+};
+
 export function ExpenseForm({ group, userId }: ExpenseFormProps) {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [splitType, setSplitType] = useState<SplitType>("equal");
     const [selectedMembers, setSelectedMembers] = useState<string[]>(
-        group.members.map((m) => m.user_id)
+        group.members.map((m) => getMemberId(m))
     );
     const [customSplits, setCustomSplits] = useState<Record<string, number>>({});
 
@@ -86,10 +127,13 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
     const amount = watch("amount");
     const paidBy = watch("paid_by");
 
-    const paidByOptions = group.members.map((m) => ({
-        value: m.user_id,
-        label: m.user_id === userId ? "You" : m.profile?.full_name || m.profile?.email || "Unknown",
-    }));
+    // Only real users can be "paid by" (not placeholders)
+    const paidByOptions = group.members
+        .filter((m) => !m.is_placeholder && m.user_id)
+        .map((m) => ({
+            value: m.user_id!,
+            label: getMemberName(m, userId),
+        }));
 
     // Calculate equal splits when amount or selected members change
     useEffect(() => {
@@ -122,12 +166,18 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
         setIsLoading(true);
         setError(null);
 
-        // Build splits array
-        const splits = selectedMembers.map((memberId) => ({
-            user_id: memberId,
-            amount: customSplits[memberId] || 0,
-            percentage: splitType === "percentage" ? customSplits[memberId] : undefined,
-        }));
+        // Build splits array - handle both real users and placeholders
+        const splits = selectedMembers.map((memberId) => {
+            const isPlaceholder = memberId.startsWith("placeholder:");
+            const actualId = isPlaceholder ? memberId.replace("placeholder:", "") : memberId;
+
+            return {
+                user_id: isPlaceholder ? undefined : actualId,
+                placeholder_id: isPlaceholder ? actualId : undefined,
+                amount: customSplits[memberId] || 0,
+                percentage: splitType === "percentage" ? customSplits[memberId] : undefined,
+            };
+        });
 
         // Validate splits total
         const splitsTotal = splits.reduce((sum, s) => sum + s.amount, 0);
@@ -254,53 +304,67 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                         </div>
 
                         <div className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-                            {group.members.map((member) => (
-                                <div key={member.user_id} className="flex items-center gap-4">
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedMembers.includes(member.user_id)}
-                                        onChange={() => toggleMember(member.user_id)}
-                                        className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
-                                    />
-                                    <div className="flex items-center gap-2 flex-1">
-                                        {member.profile?.avatar_url ? (
-                                            <Image
-                                                src={member.profile.avatar_url}
-                                                alt={member.profile.full_name || ""}
-                                                width={32}
-                                                height={32}
-                                                className="rounded-full"
-                                                unoptimized
-                                            />
-                                        ) : (
-                                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 text-sm text-white">
-                                                {member.profile?.full_name?.[0] || "?"}
+                            {group.members.map((member) => {
+                                const memberId = getMemberId(member);
+                                const memberName = getMemberName(member, userId);
+                                const isPlaceholder = member.is_placeholder;
+                                const avatarUrl = member.profile?.avatar_url;
+                                const initial = isPlaceholder
+                                    ? member.placeholder?.name?.[0]?.toUpperCase()
+                                    : member.profile?.full_name?.[0]?.toUpperCase();
+
+                                return (
+                                    <div key={memberId} className="flex items-center gap-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedMembers.includes(memberId)}
+                                            onChange={() => toggleMember(memberId)}
+                                            className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                        />
+                                        <div className="flex items-center gap-2 flex-1">
+                                            {avatarUrl ? (
+                                                <Image
+                                                    src={avatarUrl}
+                                                    alt={memberName}
+                                                    width={32}
+                                                    height={32}
+                                                    className="rounded-full"
+                                                    unoptimized
+                                                />
+                                            ) : (
+                                                <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm text-white ${isPlaceholder ? "bg-gray-400" : "bg-teal-500"
+                                                    }`}>
+                                                    {initial || "?"}
+                                                </div>
+                                            )}
+                                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                                                {memberName}
+                                                {isPlaceholder && (
+                                                    <span className="ml-1 text-xs text-amber-600">(not signed up)</span>
+                                                )}
+                                            </span>
+                                        </div>
+                                        {selectedMembers.includes(memberId) && splitType !== "equal" && (
+                                            <div className="w-28">
+                                                <Input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    placeholder="0.00"
+                                                    value={customSplits[memberId] || ""}
+                                                    onChange={(e) => handleSplitChange(memberId, e.target.value)}
+                                                    className="h-9 text-sm"
+                                                />
                                             </div>
                                         )}
-                                        <span className="text-sm text-gray-700 dark:text-gray-300">
-                                            {member.user_id === userId ? "You" : member.profile?.full_name || member.profile?.email}
-                                        </span>
+                                        {selectedMembers.includes(memberId) && splitType === "equal" && (
+                                            <span className="w-28 text-right text-sm font-medium text-gray-900 dark:text-white">
+                                                ${(customSplits[memberId] || 0).toFixed(2)}
+                                            </span>
+                                        )}
                                     </div>
-                                    {selectedMembers.includes(member.user_id) && splitType !== "equal" && (
-                                        <div className="w-28">
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                placeholder="0.00"
-                                                value={customSplits[member.user_id] || ""}
-                                                onChange={(e) => handleSplitChange(member.user_id, e.target.value)}
-                                                className="h-9 text-sm"
-                                            />
-                                        </div>
-                                    )}
-                                    {selectedMembers.includes(member.user_id) && splitType === "equal" && (
-                                        <span className="w-28 text-right text-sm font-medium text-gray-900 dark:text-white">
-                                            ${(customSplits[member.user_id] || 0).toFixed(2)}
-                                        </span>
-                                    )}
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 

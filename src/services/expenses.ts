@@ -22,7 +22,8 @@ export interface CreateExpenseInput {
     expense_date?: string;
     notes?: string;
     splits: {
-        user_id: string;
+        user_id?: string;
+        placeholder_id?: string;
         amount: number;
         percentage?: number;
     }[];
@@ -168,7 +169,8 @@ export const expensesService = {
         // Create splits
         const splitsToInsert = input.splits.map((split) => ({
             expense_id: expense.id,
-            user_id: split.user_id,
+            user_id: split.user_id || null,
+            placeholder_id: split.placeholder_id || null,
             amount: split.amount,
             percentage: split.percentage || null,
         }));
