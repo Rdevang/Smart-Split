@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/(auth)/actions";
 import Image from "next/image";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 interface NavbarProps {
     user: {
@@ -99,6 +100,9 @@ export function Navbar({ user }: NavbarProps) {
 
                 {/* Right side */}
                 <div className="flex items-center gap-3">
+                    {/* Theme Toggle */}
+                    <ThemeToggle />
+
                     {/* Profile Dropdown */}
                     <div className="relative" ref={profileRef}>
                         <button

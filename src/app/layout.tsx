@@ -26,9 +26,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const theme = localStorage.getItem('theme') || 'system';
+                const isDark = theme === 'dark' || 
+                  (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                if (isDark) document.documentElement.classList.add('dark');
+              })();
+            `,
+          }}
+        />
+      </head>
       <body
-        className={`${plusJakarta.variable} ${inter.variable} font-body antialiased`}
+        className={`${plusJakarta.variable} ${inter.variable} font-body antialiased bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100`}
       >
         {children}
       </body>

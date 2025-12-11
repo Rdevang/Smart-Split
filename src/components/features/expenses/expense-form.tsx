@@ -1,0 +1,335 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { expensesService } from "@/services/expenses";
+import type { GroupWithMembers } from "@/services/groups";
+import type { Database } from "@/types/database";
+
+type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
+type SplitType = Database["public"]["Enums"]["split_type"];
+
+const expenseSchema = z.object({
+    description: z.string().min(1, "Description is required").max(200, "Description too long"),
+    amount: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, "Amount must be greater than 0"),
+    paid_by: z.string().min(1, "Select who paid"),
+    category: z.string(),
+    split_type: z.string(),
+    expense_date: z.string().optional(),
+    notes: z.string().max(500, "Notes too long").optional(),
+});
+
+type ExpenseFormData = z.infer<typeof expenseSchema>;
+
+interface ExpenseFormProps {
+    group: GroupWithMembers;
+    userId: string;
+}
+
+const categoryOptions = [
+    { value: "food", label: "🍕 Food & Drinks" },
+    { value: "transport", label: "🚗 Transport" },
+    { value: "entertainment", label: "🎬 Entertainment" },
+    { value: "utilities", label: "⚡ Utilities" },
+    { value: "rent", label: "🏠 Rent" },
+    { value: "shopping", label: "🛍️ Shopping" },
+    { value: "travel", label: "✈️ Travel" },
+    { value: "healthcare", label: "❤️ Healthcare" },
+    { value: "groceries", label: "🛒 Groceries" },
+    { value: "other", label: "📋 Other" },
+];
+
+const splitTypeOptions = [
+    { value: "equal", label: "Split Equally" },
+    { value: "exact", label: "Exact Amounts" },
+    { value: "percentage", label: "By Percentage" },
+];
+
+export function ExpenseForm({ group, userId }: ExpenseFormProps) {
+    const router = useRouter();
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [splitType, setSplitType] = useState<SplitType>("equal");
+    const [selectedMembers, setSelectedMembers] = useState<string[]>(
+        group.members.map((m) => m.user_id)
+    );
+    const [customSplits, setCustomSplits] = useState<Record<string, number>>({});
+
+    const {
+        register,
+        handleSubmit,
+        setValue,
+        watch,
+        formState: { errors },
+    } = useForm<ExpenseFormData>({
+        resolver: zodResolver(expenseSchema),
+        defaultValues: {
+            description: "",
+            amount: "",
+            paid_by: userId,
+            category: "other",
+            split_type: "equal",
+            expense_date: new Date().toISOString().split("T")[0],
+            notes: "",
+        },
+    });
+
+    const amount = watch("amount");
+    const paidBy = watch("paid_by");
+
+    const paidByOptions = group.members.map((m) => ({
+        value: m.user_id,
+        label: m.user_id === userId ? "You" : m.profile?.full_name || m.profile?.email || "Unknown",
+    }));
+
+    // Calculate equal splits when amount or selected members change
+    useEffect(() => {
+        if (splitType === "equal" && amount && selectedMembers.length > 0) {
+            const splitAmount = Number(amount) / selectedMembers.length;
+            const newSplits: Record<string, number> = {};
+            selectedMembers.forEach((memberId) => {
+                newSplits[memberId] = Math.round(splitAmount * 100) / 100;
+            });
+            setCustomSplits(newSplits);
+        }
+    }, [amount, selectedMembers, splitType]);
+
+    const toggleMember = (memberId: string) => {
+        setSelectedMembers((prev) =>
+            prev.includes(memberId)
+                ? prev.filter((id) => id !== memberId)
+                : [...prev, memberId]
+        );
+    };
+
+    const handleSplitChange = (memberId: string, value: string) => {
+        setCustomSplits((prev) => ({
+            ...prev,
+            [memberId]: Number(value) || 0,
+        }));
+    };
+
+    const onSubmit = async (data: ExpenseFormData) => {
+        setIsLoading(true);
+        setError(null);
+
+        // Build splits array
+        const splits = selectedMembers.map((memberId) => ({
+            user_id: memberId,
+            amount: customSplits[memberId] || 0,
+            percentage: splitType === "percentage" ? customSplits[memberId] : undefined,
+        }));
+
+        // Validate splits total
+        const splitsTotal = splits.reduce((sum, s) => sum + s.amount, 0);
+        const totalAmount = Number(data.amount);
+
+        if (Math.abs(splitsTotal - totalAmount) > 0.01) {
+            setError(`Splits total ($${splitsTotal.toFixed(2)}) doesn't match expense amount ($${totalAmount.toFixed(2)})`);
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            const result = await expensesService.createExpense(
+                {
+                    group_id: group.id,
+                    description: data.description,
+                    amount: totalAmount,
+                    paid_by: data.paid_by,
+                    category: data.category as ExpenseCategory,
+                    split_type: splitType,
+                    expense_date: data.expense_date,
+                    notes: data.notes,
+                    splits,
+                },
+                userId
+            );
+
+            if (result.error) {
+                setError(result.error);
+                return;
+            }
+
+            router.push(`/groups/${group.id}`);
+            router.refresh();
+        } catch {
+            setError("An unexpected error occurred");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const splitsTotal = Object.values(customSplits).reduce((sum, val) => sum + val, 0);
+    const amountNum = Number(amount) || 0;
+    const isBalanced = Math.abs(splitsTotal - amountNum) < 0.01;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Add Expense</CardTitle>
+                <CardDescription>
+                    Add a new expense to {group.name}
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                    {error && (
+                        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <Input
+                            label="Description"
+                            placeholder="e.g., Dinner at restaurant"
+                            error={errors.description?.message}
+                            {...register("description")}
+                        />
+
+                        <Input
+                            label="Amount"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            error={errors.amount?.message}
+                            {...register("amount")}
+                        />
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <Select
+                            label="Paid by"
+                            options={paidByOptions}
+                            value={paidBy}
+                            onChange={(value) => setValue("paid_by", value)}
+                            error={errors.paid_by?.message}
+                        />
+
+                        <Select
+                            label="Category"
+                            options={categoryOptions}
+                            value={watch("category")}
+                            onChange={(value) => setValue("category", value)}
+                        />
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                        <Input
+                            label="Date"
+                            type="date"
+                            {...register("expense_date")}
+                        />
+
+                        <Select
+                            label="Split Type"
+                            options={splitTypeOptions}
+                            value={splitType}
+                            onChange={(value) => setSplitType(value as SplitType)}
+                        />
+                    </div>
+
+                    {/* Split Configuration */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                Split Between
+                            </label>
+                            {amountNum > 0 && (
+                                <span className={`text-sm ${isBalanced ? "text-green-600" : "text-red-600"}`}>
+                                    ${splitsTotal.toFixed(2)} / ${amountNum.toFixed(2)}
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                            {group.members.map((member) => (
+                                <div key={member.user_id} className="flex items-center gap-4">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedMembers.includes(member.user_id)}
+                                        onChange={() => toggleMember(member.user_id)}
+                                        className="h-4 w-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                    />
+                                    <div className="flex items-center gap-2 flex-1">
+                                        {member.profile?.avatar_url ? (
+                                            <Image
+                                                src={member.profile.avatar_url}
+                                                alt={member.profile.full_name || ""}
+                                                width={32}
+                                                height={32}
+                                                className="rounded-full"
+                                                unoptimized
+                                            />
+                                        ) : (
+                                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 text-sm text-white">
+                                                {member.profile?.full_name?.[0] || "?"}
+                                            </div>
+                                        )}
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                                            {member.user_id === userId ? "You" : member.profile?.full_name || member.profile?.email}
+                                        </span>
+                                    </div>
+                                    {selectedMembers.includes(member.user_id) && splitType !== "equal" && (
+                                        <div className="w-28">
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                placeholder="0.00"
+                                                value={customSplits[member.user_id] || ""}
+                                                onChange={(e) => handleSplitChange(member.user_id, e.target.value)}
+                                                className="h-9 text-sm"
+                                            />
+                                        </div>
+                                    )}
+                                    {selectedMembers.includes(member.user_id) && splitType === "equal" && (
+                                        <span className="w-28 text-right text-sm font-medium text-gray-900 dark:text-white">
+                                            ${(customSplits[member.user_id] || 0).toFixed(2)}
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <Textarea
+                        label="Notes (optional)"
+                        placeholder="Any additional details..."
+                        {...register("notes")}
+                    />
+
+                    <div className="flex gap-3 pt-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => router.back()}
+                            disabled={isLoading}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            isLoading={isLoading}
+                            disabled={!isBalanced || selectedMembers.length === 0}
+                        >
+                            Add Expense
+                        </Button>
+                    </div>
+                </form>
+            </CardContent>
+        </Card>
+    );
+}
+

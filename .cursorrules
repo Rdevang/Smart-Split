@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.1.0 | LAST UPDATED: 2024-12-11
+# VERSION: 2.2.0 | LAST UPDATED: 2024-12-11
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -402,6 +402,37 @@ npm run test:coverage # Coverage report
 
 ## LEARNINGS & DECISIONS LOG
 
+### 2024-12-11: Session 4 - Groups, Expenses & Dark Mode
+
+#### Groups & Expenses Feature:
+- Created full CRUD for Groups and Expenses
+- **Server vs Client Services**: Server Components MUST use server services (`*.server.ts`)
+- Browser client (`createBrowserClient`) cannot access user session in server context
+- Created `src/services/groups.server.ts` and `src/services/expenses.server.ts` for RSC usage
+- Client services (`src/services/groups.ts`) still used for client-side mutations
+
+#### RLS Policy Fixes:
+- Infinite recursion in RLS: Don't query the same table in its own SELECT policy
+- Fix: Create `SECURITY DEFINER` functions (`is_group_member`, `is_group_admin`)
+- Groups INSERT needed permissive policy: `WITH CHECK (true)` for authenticated users
+- Foreign key constraint on `created_by` requires profile to exist first
+
+#### Dark Mode Implementation:
+- Tailwind CSS v4 uses `@custom-variant dark (&:where(.dark, .dark *));` for class-based dark mode
+- Theme toggle must use `useSyncExternalStore` to avoid hydration issues
+- Don't call `setState` synchronously in `useEffect` - use lazy initialization instead
+- Store preference in localStorage, apply `.dark` class to `document.documentElement`
+
+#### UI Components Added:
+- `Select` - Dropdown with `useId()` for SSR-safe IDs
+- `Textarea` - Multi-line input
+- `Badge` - Status/category badges with variants
+- `ThemeToggle` - Self-contained dark/light mode toggle
+
+#### Form ID Generation:
+- Never use `Math.random()` for IDs in components - causes hydration mismatch
+- Use React's `useId()` hook for SSR-safe unique IDs
+
 ### 2024-12-11: Session 3 - Vercel Deployment
 
 #### Deployment:
@@ -485,7 +516,28 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 
 ## MISTAKES & CORRECTIONS
 
-### 2024-12-11
+### 2024-12-11 (Session 4)
+- **Mistake**: Server Components using browser Supabase client - RLS saw no authenticated user
+- **Correction**: Created separate `*.server.ts` services that use server client
+- **Prevention**: Always use server client in RSC, browser client only in "use client" components
+
+- **Mistake**: RLS policy infinite recursion on `group_members` table
+- **Correction**: Created `SECURITY DEFINER` functions to check membership without RLS
+- **Prevention**: Never query a table within its own RLS policy SELECT clause
+
+- **Mistake**: Hydration mismatch from `Math.random()` IDs in form components
+- **Correction**: Use React's `useId()` hook for SSR-safe unique IDs
+- **Prevention**: Never use non-deterministic values (Math.random, Date.now) in initial render
+
+- **Mistake**: Calling `setState` synchronously in `useEffect` body
+- **Correction**: Use `useSyncExternalStore` for mount state, lazy init for localStorage values
+- **Prevention**: Effects should sync external systems, not update React state directly
+
+- **Mistake**: Dark mode not working - CSS used `@media (prefers-color-scheme)` only
+- **Correction**: Added `@custom-variant dark` in Tailwind CSS v4 for class-based dark mode
+- **Prevention**: For manual theme toggle, must configure class-based dark mode
+
+### 2024-12-11 (Session 3)
 - **Mistake**: OAuth not working in production - `headers().get("origin")` returns null on Vercel
 - **Correction**: Use `NEXT_PUBLIC_SITE_URL` env var instead of headers
 - **Prevention**: Always use explicit env vars for site URLs, never rely on request headers
@@ -538,6 +590,9 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Currency handling → User preference stored in profile, 8 currencies supported
 - [x] Deployment platform → Vercel with `NEXT_PUBLIC_SITE_URL` for OAuth redirects
 - [x] Production URL → https://smart-split-one.vercel.app
+- [x] Server vs Client services → Separate `*.server.ts` files for RSC usage
+- [x] Dark mode implementation → Class-based with localStorage persistence
+- [x] Form ID generation → React `useId()` hook for SSR safety
 
 ---
 
@@ -552,6 +607,10 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - Supabase Storage for files - simple API, RLS support
 - Vercel deployment - seamless CI/CD, automatic preview deployments
 - Google OAuth - working in production with proper redirect URLs
+- Server/Client service split - clear boundary for RSC vs client usage
+- SECURITY DEFINER functions - solve RLS recursion elegantly
+- Dark mode toggle - simple, self-contained, no context provider needed
+- `useId()` hook - SSR-safe unique IDs for form elements
 
 ---
 
@@ -560,9 +619,11 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [ ] Add loading skeletons for better UX
 - [ ] Implement toast notifications for feedback
 - [ ] Add error boundaries for graceful failures
-- [ ] Build Groups CRUD functionality
-- [ ] Build Expenses CRUD functionality
+- [x] Build Groups CRUD functionality ✅
+- [x] Build Expenses CRUD functionality ✅
 - [ ] Add activity feed with real-time updates
+- [ ] Settlement flow (record payments between users)
+- [ ] Delete group/expense confirmation modals
 
 ---
 
@@ -586,6 +647,11 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ❌ Don't use `headers().get("origin")` for OAuth redirects - use env vars
 ❌ Don't use `!` assertions on env vars - always validate first
 ❌ Don't forget to set env vars on Vercel before deploying
+❌ Don't use browser Supabase client in Server Components - use server client
+❌ Don't query a table in its own RLS policy (causes infinite recursion)
+❌ Don't use `Math.random()` or `Date.now()` for component IDs - use `useId()`
+❌ Don't call `setState` synchronously in `useEffect` - use lazy initialization
+❌ Don't use `@media (prefers-color-scheme)` alone for manual dark mode toggle
 
 ---
 
@@ -600,14 +666,26 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | `src/middleware.ts` | Route protection | 2024-12-10 |
 | `src/app/(auth)/actions.ts` | Auth server actions (login, register, OAuth) | 2024-12-10 |
 | `src/components/ui/button.tsx` | Button component with CVA | 2024-12-10 |
-| `src/components/ui/input.tsx` | Input component | 2024-12-10 |
+| `src/components/ui/input.tsx` | Input component with useId | 2024-12-11 |
 | `src/components/ui/card.tsx` | Card component family | 2024-12-10 |
-| `src/components/layout/navbar.tsx` | Dashboard navbar with profile dropdown | 2024-12-10 |
-| `src/services/profile.ts` | Profile CRUD and avatar upload | 2024-12-10 |
+| `src/components/ui/select.tsx` | Dropdown select component | 2024-12-11 |
+| `src/components/ui/textarea.tsx` | Multi-line text input | 2024-12-11 |
+| `src/components/ui/badge.tsx` | Status/category badges | 2024-12-11 |
+| `src/components/ui/theme-toggle.tsx` | Dark/light mode toggle | 2024-12-11 |
+| `src/components/layout/navbar.tsx` | Dashboard navbar with theme toggle | 2024-12-11 |
+| `src/components/features/groups/` | Group card, form, add-member | 2024-12-11 |
+| `src/components/features/expenses/` | Expense card, form | 2024-12-11 |
+| `src/services/profile.ts` | Profile CRUD (client) | 2024-12-10 |
+| `src/services/groups.ts` | Groups CRUD (client) | 2024-12-11 |
+| `src/services/groups.server.ts` | Groups CRUD (server) | 2024-12-11 |
+| `src/services/expenses.ts` | Expenses CRUD (client) | 2024-12-11 |
+| `src/services/expenses.server.ts` | Expenses CRUD (server) | 2024-12-11 |
+| `src/app/(dashboard)/groups/` | Groups list, create, detail, settings | 2024-12-11 |
+| `src/app/(dashboard)/expenses/` | Expenses list page | 2024-12-11 |
 | `src/app/(dashboard)/layout.tsx` | Protected dashboard layout | 2024-12-10 |
 | `src/app/(dashboard)/settings/profile/` | Profile settings page | 2024-12-10 |
 | `src/types/database.ts` | Generated Supabase types | 2024-12-10 |
-| `supabase/migrations/` | Database migrations | 2024-12-10 |
+| `supabase/migrations/` | Database migrations + RLS fixes | 2024-12-11 |
 | `jest.config.ts` | Jest configuration | 2024-12-10 |
 | `jest.setup.ts` | Test setup and mocks | 2024-12-10 |
 | `next.config.ts` | Next.js config with image domains | 2024-12-10 |
@@ -641,9 +719,10 @@ docs/
 
 ## NEXT SESSION PRIORITIES
 
-1. Build Groups feature (create, list, edit, delete, invite members)
-2. Build Expenses feature (add expense, split calculation)
-3. Implement real-time activity feed
-4. Add toast notifications for user feedback
+1. Settlement flow (record payments, mark splits as settled)
+2. Activity feed with real-time updates
+3. Toast notifications for user feedback
+4. Delete confirmation modals for groups/expenses
 5. Add forgot-password page (currently 404)
 6. GitHub OAuth setup (configure in GitHub Developer settings)
+7. Deploy latest changes to Vercel production

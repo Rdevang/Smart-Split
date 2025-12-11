@@ -23,16 +23,18 @@
   --font-body: var(--font-body);
 }
 
+/* Enable class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #fafafa;
   --foreground: #0a0a0a;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #fafafa;
-  }
+/* Dark mode using .dark class on html */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
 }
 
 html {
@@ -43,6 +45,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -68,11 +71,10 @@ h1, h2, h3, h4, h5, h6 {
   background: #9ca3af;
 }
 
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
-    background: #4b5563;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #6b7280;
-  }
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
 }

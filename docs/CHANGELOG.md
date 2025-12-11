@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2024-12-11
+
+### Added
+
+#### Groups Feature
+- Groups list page with category badges and member counts
+- Create group form with name, description, category, simplify debts option
+- Group detail page with expenses, members, and balances
+- Group settings page for admins to edit group details
+- Add member by email functionality
+- Categories: Trip, Home, Couple, Other
+
+#### Expenses Feature
+- Add expense form with split types (Equal, Exact, Percentage)
+- Expense cards showing who paid, amounts, and splits
+- Category icons and colors for 10 expense categories
+- Split calculation with remainder distribution
+- Expenses list page showing all user expenses
+
+#### UI Components
+- `Select` component with SSR-safe `useId()`
+- `Textarea` component for multi-line input
+- `Badge` component with 6 color variants
+- `ThemeToggle` component for dark/light mode
+
+#### Dark Mode
+- Class-based dark mode using Tailwind CSS v4
+- Theme preference saved to localStorage
+- Smooth transitions between themes
+- System preference detection as default
+
+### Fixed
+
+#### RLS Policy Issues
+- Fixed infinite recursion in `group_members` RLS policy
+- Created `SECURITY DEFINER` functions for membership checks
+- Fixed groups INSERT policy for authenticated users
+- Added profile creation for users missing profiles
+
+#### Server/Client Architecture
+- Created separate server services (`*.server.ts`) for RSC usage
+- Fixed browser client usage in Server Components
+- Proper authentication context in server-side data fetching
+
+#### Hydration Issues
+- Replaced `Math.random()` IDs with React `useId()` hook
+- Fixed `setState` in `useEffect` using `useSyncExternalStore`
+- Added proper mounted state handling for SSR
+
+### Technical Details
+
+- Server services use `createClient` from `@/lib/supabase/server`
+- Client services use `createClient` from `@/lib/supabase/client`
+- Dark mode: `@custom-variant dark (&:where(.dark, .dark *));`
+- RLS functions: `is_group_member()`, `is_group_admin()`
+
+---
+
 ## [2.1.0] - 2024-12-11
 
 ### Added
@@ -170,6 +228,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.2.0 | 2024-12-11 | Groups & Expenses CRUD, Dark mode, RLS fixes |
 | 2.1.0 | 2024-12-11 | Vercel deployment, OAuth production fixes |
 | 2.0.0 | 2024-12-10 | Full auth, database schema, profile system, testing |
 | 1.0.0 | 2024-12-10 | Project bootstrap, landing page, auth UI |

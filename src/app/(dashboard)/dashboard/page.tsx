@@ -1,120 +1,228 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import {
+    Plus, Users, Receipt, TrendingUp, TrendingDown,
+    ArrowRight
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
-import { Users, Receipt, TrendingUp, TrendingDown } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { GroupCard } from "@/components/features/groups/group-card";
+import { ExpenseCard } from "@/components/features/expenses/expense-card";
+import { groupsServerService } from "@/services/groups.server";
+import { expensesServerService } from "@/services/expenses.server";
 
 export default async function DashboardPage() {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error } = await supabase.auth.getUser();
 
-    // TODO: Fetch actual stats from database
-    const stats = [
-        {
-            title: "Total Balance",
-            value: "$0.00",
-            description: "You're all settled up!",
-            icon: TrendingUp,
-            color: "text-green-600",
-            bgColor: "bg-green-100 dark:bg-green-900/30",
-        },
-        {
-            title: "You Owe",
-            value: "$0.00",
-            description: "No pending debts",
-            icon: TrendingDown,
-            color: "text-red-600",
-            bgColor: "bg-red-100 dark:bg-red-900/30",
-        },
-        {
-            title: "Groups",
-            value: "0",
-            description: "Create your first group",
-            icon: Users,
-            color: "text-blue-600",
-            bgColor: "bg-blue-100 dark:bg-blue-900/30",
-        },
-        {
-            title: "Expenses",
-            value: "0",
-            description: "This month",
-            icon: Receipt,
-            color: "text-purple-600",
-            bgColor: "bg-purple-100 dark:bg-purple-900/30",
-        },
-    ];
+    if (error || !user) {
+        redirect("/login");
+    }
+
+    // Fetch data in parallel
+    const [groupsResult, recentExpenses, profile] = await Promise.all([
+        groupsServerService.getGroups(user.id),
+        expensesServerService.getRecentExpenses(user.id, 5),
+        supabase.from("profiles").select("full_name").eq("id", user.id).single(),
+    ]);
+
+    const groups = groupsResult.data;
+
+    // Calculate summary stats
+    let totalOwed = 0;
+    let totalOwe = 0;
+
+    recentExpenses.forEach((expense) => {
+        if (expense.paid_by === user.id) {
+            // User paid, others owe them
+            const othersOwe = expense.splits
+                .filter((s) => s.user_id !== user.id && !s.is_settled)
+                .reduce((sum, s) => sum + s.amount, 0);
+            totalOwed += othersOwe;
+        } else {
+            // Someone else paid, user might owe
+            const userSplit = expense.splits.find((s) => s.user_id === user.id && !s.is_settled);
+            if (userSplit) {
+                totalOwe += userSplit.amount;
+            }
+        }
+    });
+
+    const netBalance = totalOwed - totalOwe;
+    const firstName = profile.data?.full_name?.split(" ")[0] || "there";
 
     return (
         <div className="space-y-8">
-            {/* Welcome section */}
-            <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    Welcome back, {user?.user_metadata?.full_name?.split(" ")[0] || "there"}! 👋
-                </h1>
-                <p className="mt-1 text-gray-600 dark:text-gray-400">
-                    Here&apos;s an overview of your expenses and balances.
-                </p>
+            {/* Welcome Header */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                        Welcome back, {firstName}! 👋
+                    </h1>
+                    <p className="mt-1 text-gray-500 dark:text-gray-400">
+                        Here&apos;s what&apos;s happening with your expenses
+                    </p>
+                </div>
+                <div className="flex gap-2">
+                    <Link href="/groups/new">
+                        <Button variant="outline">
+                            <Users className="mr-2 h-4 w-4" />
+                            New Group
+                        </Button>
+                    </Link>
+                    {groups.length > 0 && (
+                        <Link href={`/groups/${groups[0].id}/expenses/new`}>
+                            <Button>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add Expense
+                            </Button>
+                        </Link>
+                    )}
+                </div>
             </div>
 
-            {/* Stats grid */}
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {stats.map((stat) => (
-                    <Card key={stat.title}>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                {stat.title}
-                            </CardTitle>
-                            <div className={`rounded-lg p-2 ${stat.bgColor}`}>
-                                <stat.icon className={`h-4 w-4 ${stat.color}`} />
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                                {stat.value}
-                            </div>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {stat.description}
-                            </p>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
-
-            {/* Recent activity section */}
-            <div className="grid gap-6 lg:grid-cols-2">
-                {/* Recent expenses */}
+            {/* Stats Cards */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Recent Expenses</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex flex-col items-center justify-center py-8 text-center">
-                            <Receipt className="h-12 w-12 text-gray-300 dark:text-gray-600" />
-                            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                                No expenses yet
-                            </p>
-                            <p className="text-xs text-gray-400 dark:text-gray-500">
-                                Add your first expense to get started
+                    <CardContent className="flex items-center gap-4 p-6">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30">
+                            <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">You are owed</p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                ${totalOwed.toFixed(2)}
                             </p>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Your groups */}
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Your Groups</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex flex-col items-center justify-center py-8 text-center">
-                            <Users className="h-12 w-12 text-gray-300 dark:text-gray-600" />
-                            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                                No groups yet
-                            </p>
-                            <p className="text-xs text-gray-400 dark:text-gray-500">
-                                Create a group to start splitting expenses
+                    <CardContent className="flex items-center gap-4 p-6">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 dark:bg-red-900/30">
+                            <TrendingDown className="h-6 w-6 text-red-600 dark:text-red-400" />
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">You owe</p>
+                            <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                                ${totalOwe.toFixed(2)}
                             </p>
                         </div>
                     </CardContent>
                 </Card>
+
+                <Card>
+                    <CardContent className="flex items-center gap-4 p-6">
+                        <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${netBalance >= 0
+                            ? "bg-teal-100 dark:bg-teal-900/30"
+                            : "bg-orange-100 dark:bg-orange-900/30"
+                            }`}>
+                            <Receipt className={`h-6 w-6 ${netBalance >= 0
+                                ? "text-teal-600 dark:text-teal-400"
+                                : "text-orange-600 dark:text-orange-400"
+                                }`} />
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Net Balance</p>
+                            <p className={`text-2xl font-bold ${netBalance >= 0
+                                ? "text-teal-600 dark:text-teal-400"
+                                : "text-orange-600 dark:text-orange-400"
+                                }`}>
+                                {netBalance >= 0 ? "+" : ""}{netBalance.toFixed(2)}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardContent className="flex items-center gap-4 p-6">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100 dark:bg-purple-900/30">
+                            <Users className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Active Groups</p>
+                            <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                                {groups.length}
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div className="grid gap-8 lg:grid-cols-3">
+                {/* Recent Groups */}
+                <div className="lg:col-span-2 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Your Groups
+                        </h2>
+                        <Link href="/groups" className="text-sm text-teal-600 hover:text-teal-700 dark:text-teal-400">
+                            View all <ArrowRight className="ml-1 inline h-4 w-4" />
+                        </Link>
+                    </div>
+
+                    {groups.length === 0 ? (
+                        <Card>
+                            <CardContent className="flex flex-col items-center py-12">
+                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/30">
+                                    <Users className="h-8 w-8 text-teal-600 dark:text-teal-400" />
+                                </div>
+                                <h3 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
+                                    No groups yet
+                                </h3>
+                                <p className="mt-2 text-center text-gray-500 dark:text-gray-400">
+                                    Create your first group to start<br />splitting expenses with friends.
+                                </p>
+                                <Link href="/groups/new" className="mt-6">
+                                    <Button>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Create Your First Group
+                                    </Button>
+                                </Link>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="grid gap-4">
+                            {groups.slice(0, 3).map((group) => (
+                                <GroupCard key={group.id} group={group} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Recent Expenses */}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Recent Expenses
+                        </h2>
+                        <Link href="/expenses" className="text-sm text-teal-600 hover:text-teal-700 dark:text-teal-400">
+                            View all <ArrowRight className="ml-1 inline h-4 w-4" />
+                        </Link>
+                    </div>
+
+                    {recentExpenses.length === 0 ? (
+                        <Card>
+                            <CardContent className="flex flex-col items-center py-8">
+                                <Receipt className="h-10 w-10 text-gray-300 dark:text-gray-600" />
+                                <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                                    No expenses yet
+                                </p>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-3">
+                            {recentExpenses.map((expense) => (
+                                <ExpenseCard
+                                    key={expense.id}
+                                    expense={expense}
+                                    currentUserId={user.id}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
