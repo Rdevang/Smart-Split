@@ -453,5 +453,89 @@ export const groupsService = {
 
         return data?.role === "admin";
     },
+
+    async recordSettlement(
+        groupId: string,
+        fromUserId: string,
+        toUserId: string,
+        amount: number,
+        recordedBy: string
+    ): Promise<{ success: boolean; error?: string }> {
+        const supabase = createClient();
+
+        // Create settlement record
+        const { error: settlementError } = await supabase
+            .from("settlements")
+            .insert({
+                group_id: groupId,
+                from_user: fromUserId,
+                to_user: toUserId,
+                amount,
+            });
+
+        if (settlementError) {
+            return { success: false, error: settlementError.message };
+        }
+
+        // Mark relevant expense splits as settled
+        // Find unsettled splits where from_user owes to_user
+        const { data: expenses } = await supabase
+            .from("expenses")
+            .select("id")
+            .eq("group_id", groupId)
+            .eq("paid_by", toUserId);
+
+        if (expenses && expenses.length > 0) {
+            const expenseIds = expenses.map((e) => e.id);
+
+            await supabase
+                .from("expense_splits")
+                .update({
+                    is_settled: true,
+                    settled_at: new Date().toISOString(),
+                })
+                .in("expense_id", expenseIds)
+                .eq("user_id", fromUserId)
+                .eq("is_settled", false);
+        }
+
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: recordedBy,
+            group_id: groupId,
+            entity_type: "settlement",
+            action: "created",
+            metadata: {
+                from_user: fromUserId,
+                to_user: toUserId,
+                amount,
+            },
+        });
+
+        return { success: true };
+    },
+
+    async getSettlements(groupId: string): Promise<{
+        id: string;
+        from_user: string;
+        to_user: string;
+        amount: number;
+        settled_at: string;
+    }[]> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase
+            .from("settlements")
+            .select("*")
+            .eq("group_id", groupId)
+            .order("settled_at", { ascending: false });
+
+        if (error) {
+            console.error("Error fetching settlements:", error);
+            return [];
+        }
+
+        return data || [];
+    },
 };
 

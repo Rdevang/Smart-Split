@@ -1,0 +1,205 @@
+"use client";
+
+import { useState } from "react";
+import { ArrowRight, Sparkles, CheckCircle2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simplify-debts";
+import { groupsService } from "@/services/groups";
+
+interface SimplifiedDebtsProps {
+    groupId: string;
+    balances: Balance[];
+    currentUserId: string;
+    onSettle?: () => void;
+}
+
+export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: SimplifiedDebtsProps) {
+    const [settlingPayment, setSettlingPayment] = useState<string | null>(null);
+    const [settledPayments, setSettledPayments] = useState<Set<string>>(new Set());
+
+    const payments = simplifyDebts(balances);
+
+    if (payments.length === 0) {
+        return (
+            <Card>
+                <CardContent className="flex flex-col items-center py-8">
+                    <CheckCircle2 className="h-12 w-12 text-green-500" />
+                    <p className="mt-4 text-lg font-medium text-gray-900 dark:text-white">
+                        All settled up! 🎉
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        No outstanding balances in this group
+                    </p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    const handleSettle = async (payment: SimplifiedPayment) => {
+        const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
+        setSettlingPayment(paymentKey);
+
+        try {
+            // Record the settlement
+            const result = await groupsService.recordSettlement(
+                groupId,
+                payment.from_user_id,
+                payment.to_user_id,
+                payment.amount,
+                currentUserId
+            );
+
+            if (result.success) {
+                setSettledPayments((prev) => new Set([...prev, paymentKey]));
+                onSettle?.();
+            }
+        } catch (error) {
+            console.error("Failed to settle:", error);
+        } finally {
+            setSettlingPayment(null);
+        }
+    };
+
+    // Separate payments involving current user from others
+    const myPayments = payments.filter(
+        (p) => p.from_user_id === currentUserId || p.to_user_id === currentUserId
+    );
+    const otherPayments = payments.filter(
+        (p) => p.from_user_id !== currentUserId && p.to_user_id !== currentUserId
+    );
+
+    return (
+        <Card>
+            <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <Sparkles className="h-4 w-4 text-amber-500" />
+                        Simplified Debts
+                    </CardTitle>
+                    <Badge variant="info">
+                        {payments.length} payment{payments.length !== 1 ? "s" : ""}
+                    </Badge>
+                </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {/* Payments involving current user */}
+                {myPayments.length > 0 && (
+                    <div className="space-y-3">
+                        <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                            Your Payments
+                        </p>
+                        {myPayments.map((payment) => {
+                            const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
+                            const isSettled = settledPayments.has(paymentKey);
+                            const isSettling = settlingPayment === paymentKey;
+                            const youOwe = payment.from_user_id === currentUserId;
+
+                            return (
+                                <div
+                                    key={paymentKey}
+                                    className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${isSettled
+                                            ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                            : youOwe
+                                                ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                                                : "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-sm font-medium ${youOwe ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"
+                                                }`}>
+                                                {youOwe ? "You" : payment.from_user_name}
+                                            </span>
+                                            <ArrowRight className="h-4 w-4 text-gray-400" />
+                                            <span className={`text-sm font-medium ${!youOwe ? "text-green-700 dark:text-green-400" : "text-gray-700 dark:text-gray-300"
+                                                }`}>
+                                                {youOwe ? payment.to_user_name : "You"}
+                                            </span>
+                                        </div>
+                                        {payment.from_is_placeholder && (
+                                            <Badge variant="warning" className="text-[10px]">Not signed up</Badge>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-bold text-gray-900 dark:text-white">
+                                            ${payment.amount.toFixed(2)}
+                                        </span>
+                                        {isSettled ? (
+                                            <Badge variant="success">Settled</Badge>
+                                        ) : youOwe && !payment.to_is_placeholder ? (
+                                            <Button
+                                                size="sm"
+                                                variant="primary"
+                                                isLoading={isSettling}
+                                                onClick={() => handleSettle(payment)}
+                                            >
+                                                Settle
+                                            </Button>
+                                        ) : !youOwe && !payment.from_is_placeholder ? (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                isLoading={isSettling}
+                                                onClick={() => handleSettle(payment)}
+                                            >
+                                                Mark Paid
+                                            </Button>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Other payments */}
+                {otherPayments.length > 0 && (
+                    <div className="space-y-3">
+                        <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                            Other Settlements
+                        </p>
+                        {otherPayments.map((payment) => {
+                            const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
+                            const isSettled = settledPayments.has(paymentKey);
+
+                            return (
+                                <div
+                                    key={paymentKey}
+                                    className={`flex items-center justify-between rounded-lg border p-3 ${isSettled
+                                            ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                            : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50"
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                                                {payment.from_user_name}
+                                            </span>
+                                            <ArrowRight className="h-4 w-4 text-gray-400" />
+                                            <span className="text-sm text-gray-700 dark:text-gray-300">
+                                                {payment.to_user_name}
+                                            </span>
+                                        </div>
+                                        {(payment.from_is_placeholder || payment.to_is_placeholder) && (
+                                            <Badge variant="warning" className="text-[10px]">Has placeholder</Badge>
+                                        )}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                        ${payment.amount.toFixed(2)}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
+                    💡 Debts are simplified to minimize the number of payments needed
+                </p>
+            </CardContent>
+        </Card>
+    );
+}
+

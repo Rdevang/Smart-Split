@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { AddMemberForm } from "@/components/features/groups/add-member-form";
+import { SimplifiedDebts } from "@/components/features/groups/simplified-debts";
 import { groupsServerService } from "@/services/groups.server";
 import { expensesServerService } from "@/services/expenses.server";
 
@@ -258,33 +259,12 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         </CardContent>
                     </Card>
 
-                    {/* Balances Summary */}
-                    {balances.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-base">Who Owes Who</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-2 text-sm">
-                                    {balances
-                                        .filter((b) => b.balance < 0)
-                                        .map((debtor) => {
-                                            const creditors = balances.filter((b) => b.balance > 0);
-                                            return creditors.map((creditor) => (
-                                                <div key={`${debtor.user_id}-${creditor.user_id}`} className="flex items-center justify-between">
-                                                    <span className="text-gray-600 dark:text-gray-400">
-                                                        {debtor.user_id === user.id ? "You" : debtor.user_name} → {creditor.user_id === user.id ? "You" : creditor.user_name}
-                                                    </span>
-                                                    <span className="font-medium text-gray-900 dark:text-white">
-                                                        ${Math.min(Math.abs(debtor.balance), creditor.balance).toFixed(2)}
-                                                    </span>
-                                                </div>
-                                            ));
-                                        })}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
+                    {/* Simplified Debts */}
+                    <SimplifiedDebts
+                        groupId={id}
+                        balances={balances}
+                        currentUserId={user.id}
+                    />
                 </div>
             </div>
         </div>
