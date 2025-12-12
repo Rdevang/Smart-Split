@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.2.0 | LAST UPDATED: 2024-12-11
+# VERSION: 2.3.0 | LAST UPDATED: 2024-12-12
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -402,6 +402,62 @@ npm run test:coverage # Coverage report
 
 ## LEARNINGS & DECISIONS LOG
 
+### 2024-12-12: Session 5 - Navigation Progress & Bug Fixes
+
+#### Navigation & Loading States:
+- Created `Spinner` component with size/variant props using CVA pattern
+- Created `Link` component wrapping `next/link` that triggers navigation progress
+- Created `NavigationProgressProvider` context for global navigation state
+- Added `loading.tsx` files for all dashboard routes with skeleton UIs
+- Created `Providers` component wrapper for client-side providers in root layout
+
+#### Navigation Progress Pattern:
+```tsx
+// Wrap app with provider in root layout
+<Providers>{children}</Providers>
+
+// Use enhanced Link component for automatic progress
+import { Link } from "@/components/ui/link";
+<Link href="/groups">Groups</Link>
+
+// Or use hook for manual control
+const { start, done, isNavigating } = useNavigationProgress();
+```
+
+#### Bug Fixes Applied:
+1. **Placeholder check bug**: `split.placeholder_id !== null` returns `true` for `undefined`
+   - Fix: Use `!!split.placeholder_id` for truthy check covering both `undefined` and `null`
+2. **Missing avatar for current user**: When `isCurrentUser` was true, `avatarUrl` stayed `null`
+   - Fix: Set `avatarUrl = split.participant_avatar || split.profile?.avatar_url || null`
+
+#### UI Components Added:
+- `Spinner` - Loading indicator with size (sm/md/lg/xl) and variant (default/muted/white)
+- `Link` - Enhanced Next.js Link that triggers navigation progress bar
+- `NavigationProgressProvider` - Context provider for navigation state
+
+#### Loading.tsx Pattern:
+```tsx
+// src/app/(dashboard)/groups/loading.tsx
+import { Spinner } from "@/components/ui/spinner";
+import { Card, CardContent } from "@/components/ui/card";
+
+export default function GroupsLoading() {
+    return (
+        <div className="space-y-6">
+            {/* Skeleton UI matching the page structure */}
+            <div className="h-8 w-32 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800" />
+            <Spinner size="md" variant="muted" />
+        </div>
+    );
+}
+```
+
+#### Testing Notes:
+- Components using `useSearchParams` need `Suspense` wrapper in tests
+- State updates from custom hooks may not work reliably with `renderHook` + fake timers
+- Focus on testing: rendering, props, function availability rather than internal state transitions
+- Use `getAllByText` when multiple elements have same text (visible + sr-only)
+
 ### 2024-12-11: Session 4 - Groups, Expenses & Dark Mode
 
 #### Groups & Expenses Feature:
@@ -593,6 +649,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Server vs Client services → Separate `*.server.ts` files for RSC usage
 - [x] Dark mode implementation → Class-based with localStorage persistence
 - [x] Form ID generation → React `useId()` hook for SSR safety
+- [x] Navigation loading UX → Top progress bar + route skeleton loading.tsx files
+- [x] Client providers pattern → Wrap children in Providers component in root layout
 
 ---
 
@@ -611,12 +669,15 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - SECURITY DEFINER functions - solve RLS recursion elegantly
 - Dark mode toggle - simple, self-contained, no context provider needed
 - `useId()` hook - SSR-safe unique IDs for form elements
+- Navigation progress bar - NProgress-style UX for route changes
+- loading.tsx skeletons - instant feedback during navigation
+- Providers component pattern - centralized client-side providers
 
 ---
 
 ## WHAT NEEDS IMPROVEMENT
 
-- [ ] Add loading skeletons for better UX
+- [x] Add loading skeletons for better UX ✅
 - [ ] Implement toast notifications for feedback
 - [ ] Add error boundaries for graceful failures
 - [x] Build Groups CRUD functionality ✅
@@ -652,6 +713,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ❌ Don't use `Math.random()` or `Date.now()` for component IDs - use `useId()`
 ❌ Don't call `setState` synchronously in `useEffect` - use lazy initialization
 ❌ Don't use `@media (prefers-color-scheme)` alone for manual dark mode toggle
+❌ Don't use `!== null` to check optional properties - use truthy check `!!value` instead
+❌ Don't forget to set avatarUrl when displaying current user's data
 
 ---
 
@@ -672,7 +735,17 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | `src/components/ui/textarea.tsx` | Multi-line text input | 2024-12-11 |
 | `src/components/ui/badge.tsx` | Status/category badges | 2024-12-11 |
 | `src/components/ui/theme-toggle.tsx` | Dark/light mode toggle | 2024-12-11 |
+| `src/components/ui/spinner.tsx` | Loading spinner with variants | 2024-12-12 |
+| `src/components/ui/link.tsx` | Enhanced Link with navigation progress | 2024-12-12 |
 | `src/components/layout/navbar.tsx` | Dashboard navbar with theme toggle | 2024-12-11 |
+| `src/components/layout/navigation-progress.tsx` | Top progress bar provider | 2024-12-12 |
+| `src/components/providers/index.tsx` | Client-side providers wrapper | 2024-12-12 |
+| `src/app/(dashboard)/loading.tsx` | Dashboard loading skeleton | 2024-12-12 |
+| `src/app/(dashboard)/groups/loading.tsx` | Groups list loading skeleton | 2024-12-12 |
+| `src/app/(dashboard)/groups/[id]/loading.tsx` | Group detail loading skeleton | 2024-12-12 |
+| `src/app/(dashboard)/expenses/loading.tsx` | Expenses loading skeleton | 2024-12-12 |
+| `src/app/(dashboard)/activity/loading.tsx` | Activity loading skeleton | 2024-12-12 |
+| `src/app/(dashboard)/settings/loading.tsx` | Settings loading skeleton | 2024-12-12 |
 | `src/components/features/groups/` | Group card, form, add-member | 2024-12-11 |
 | `src/components/features/expenses/` | Expense card, form | 2024-12-11 |
 | `src/services/profile.ts` | Profile CRUD (client) | 2024-12-10 |
@@ -719,10 +792,11 @@ docs/
 
 ## NEXT SESSION PRIORITIES
 
-1. Settlement flow (record payments, mark splits as settled)
-2. Activity feed with real-time updates
-3. Toast notifications for user feedback
+1. Toast notifications for user feedback (success/error messages)
+2. Settlement flow (record payments, mark splits as settled)
+3. Activity feed with real-time updates
 4. Delete confirmation modals for groups/expenses
 5. Add forgot-password page (currently 404)
 6. GitHub OAuth setup (configure in GitHub Developer settings)
 7. Deploy latest changes to Vercel production
+8. Fix pre-existing TypeScript errors in test files
