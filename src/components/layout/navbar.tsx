@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Link } from "@/components/ui/link";
 import {
     Wallet,
     LayoutDashboard,

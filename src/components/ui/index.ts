@@ -8,4 +8,5 @@ export {
     CardDescription,
     CardContent,
 } from "./card";
-
+export { Spinner } from "./spinner";
+export { Link } from "./link";

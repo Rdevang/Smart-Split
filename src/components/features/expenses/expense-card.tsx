@@ -19,7 +19,7 @@ interface Split {
     user_id: string | null;
     placeholder_id?: string | null;
     amount: number;
-    is_settled?: boolean;
+    is_settled?: boolean | null;
     profile?: {
         id: string;
         full_name: string | null;
@@ -83,14 +83,17 @@ const categoryColors: Record<ExpenseCategory, string> = {
 };
 
 function getSplitDisplayInfo(split: Split, currentUserId: string) {
-    const isPlaceholder = split.is_placeholder || split.placeholder_id !== null;
+    // Use truthy check for placeholder_id to handle both undefined and null
+    const isPlaceholder = split.is_placeholder === true || !!split.placeholder_id;
     const isCurrentUser = split.user_id === currentUserId;
-    
+
     let name: string;
     let avatarUrl: string | null = null;
-    
+
     if (isCurrentUser) {
         name = "You";
+        // Still show the current user's avatar
+        avatarUrl = split.participant_avatar || split.profile?.avatar_url || null;
     } else if (split.participant_name) {
         name = split.participant_name.split(" ")[0];
         avatarUrl = split.participant_avatar || null;
@@ -102,7 +105,7 @@ function getSplitDisplayInfo(split: Split, currentUserId: string) {
     } else {
         name = "Unknown";
     }
-    
+
     return { name, avatarUrl, isPlaceholder, isCurrentUser };
 }
 
@@ -166,7 +169,7 @@ export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardPro
                         <div className="mt-3 flex flex-wrap gap-2">
                             {expense.splits.map((split) => {
                                 const { name, avatarUrl, isPlaceholder } = getSplitDisplayInfo(split, currentUserId);
-                                
+
                                 return (
                                     <div
                                         key={split.id}
