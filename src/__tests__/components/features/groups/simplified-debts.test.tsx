@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SimplifiedDebts } from "@/components/features/groups/simplified-debts";
 import { groupsService } from "@/services/groups";
+import { ToastProvider } from "@/components/ui/toast";
 import type { Balance } from "@/lib/simplify-debts";
 
 jest.mock("@/services/groups", () => ({
@@ -10,13 +11,22 @@ jest.mock("@/services/groups", () => ({
 
 const mockRecordSettlement = groupsService.recordSettlement as jest.MockedFunction<typeof groupsService.recordSettlement>;
 
+// Wrapper with ToastProvider
+function TestWrapper({ children }: { children: React.ReactNode }) {
+    return <ToastProvider>{children}</ToastProvider>;
+}
+
 describe("SimplifiedDebts", () => {
     const defaultProps = { groupId: "group-1", currentUserId: "user-1", onSettle: jest.fn() };
 
     beforeEach(() => jest.clearAllMocks());
 
     it("shows 'All settled up' when no outstanding balances", () => {
-        render(<SimplifiedDebts {...defaultProps} balances={[{ user_id: "user-1", user_name: "Alice", balance: 0 }]} />);
+        render(
+            <TestWrapper>
+                <SimplifiedDebts {...defaultProps} balances={[{ user_id: "user-1", user_name: "Alice", balance: 0 }]} />
+            </TestWrapper>
+        );
         expect(screen.getByText("All settled up! 🎉")).toBeInTheDocument();
     });
 
@@ -25,7 +35,11 @@ describe("SimplifiedDebts", () => {
             { user_id: "user-1", user_name: "Alice", balance: 50 },
             { user_id: "user-2", user_name: "Bob", balance: -50 },
         ];
-        render(<SimplifiedDebts {...defaultProps} balances={balances} />);
+        render(
+            <TestWrapper>
+                <SimplifiedDebts {...defaultProps} balances={balances} />
+            </TestWrapper>
+        );
         expect(screen.getByText("Simplified Debts")).toBeInTheDocument();
         expect(screen.getByText("1 payment")).toBeInTheDocument();
     });
@@ -35,7 +49,11 @@ describe("SimplifiedDebts", () => {
             { user_id: "user-1", user_name: "Alice", balance: -50 },
             { user_id: "user-2", user_name: "Bob", balance: 50 },
         ];
-        render(<SimplifiedDebts {...defaultProps} balances={balances} />);
+        render(
+            <TestWrapper>
+                <SimplifiedDebts {...defaultProps} balances={balances} />
+            </TestWrapper>
+        );
         expect(screen.getByRole("button", { name: /settle/i })).toBeInTheDocument();
     });
 
@@ -46,7 +64,11 @@ describe("SimplifiedDebts", () => {
             { user_id: "user-1", user_name: "Alice", balance: -50 },
             { user_id: "user-2", user_name: "Bob", balance: 50 },
         ];
-        render(<SimplifiedDebts {...defaultProps} balances={balances} />);
+        render(
+            <TestWrapper>
+                <SimplifiedDebts {...defaultProps} balances={balances} />
+            </TestWrapper>
+        );
 
         await user.click(screen.getByRole("button", { name: /settle/i }));
 
@@ -58,8 +80,11 @@ describe("SimplifiedDebts", () => {
             { user_id: "user-1", user_name: "Alice", balance: 50 },
             { user_id: "ph-1", user_name: "Mom", balance: -50, is_placeholder: true },
         ];
-        render(<SimplifiedDebts {...defaultProps} balances={balances} />);
+        render(
+            <TestWrapper>
+                <SimplifiedDebts {...defaultProps} balances={balances} />
+            </TestWrapper>
+        );
         expect(screen.getByText("Not signed up")).toBeInTheDocument();
     });
 });
-

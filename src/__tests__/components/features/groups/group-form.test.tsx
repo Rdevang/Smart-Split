@@ -10,6 +10,19 @@ jest.mock("@/services/groups", () => ({ groupsService: { createGroup: jest.fn(),
 
 const mockCreateGroup = groupsService.createGroup as jest.MockedFunction<typeof groupsService.createGroup>;
 
+// Helper to create a mock group response
+const createMockGroup = (id: string) => ({
+    id,
+    name: "Test Group",
+    description: null,
+    category: null,
+    image_url: null,
+    simplify_debts: false,
+    created_by: "user-1",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+});
+
 describe("GroupForm", () => {
     beforeEach(() => jest.clearAllMocks());
 
@@ -27,7 +40,7 @@ describe("GroupForm", () => {
 
     it("creates group successfully", async () => {
         const user = userEvent.setup();
-        mockCreateGroup.mockResolvedValue({ group: { id: "new-id" }, error: null });
+        mockCreateGroup.mockResolvedValue({ group: createMockGroup("new-id"), error: undefined });
         render(<GroupForm userId="user-1" />);
 
         await user.type(screen.getByLabelText(/group name/i), "Test Group");
@@ -54,4 +67,3 @@ describe("GroupForm", () => {
         expect(mockBack).toHaveBeenCalled();
     });
 });
-

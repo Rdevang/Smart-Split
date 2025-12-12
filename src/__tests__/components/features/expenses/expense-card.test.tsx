@@ -1,17 +1,21 @@
 import { render, screen } from "@testing-library/react";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
-import type { ExpenseWithDetails } from "@/services/expenses";
 
 jest.mock("next/image", () => ({ __esModule: true, default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} /> }));
 
 describe("ExpenseCard", () => {
-    const expense: ExpenseWithDetails = {
-        id: "e1", group_id: "g1", description: "Dinner", amount: 100, paid_by: "user-1", category: "food",
-        expense_date: "2024-12-12", split_type: "equal", created_at: "2024-12-12T10:00:00Z", updated_at: "2024-12-12T10:00:00Z",
+    // Use a minimal type that matches ExpenseCardExpense interface
+    const expense = {
+        id: "e1",
+        description: "Dinner",
+        amount: 100,
+        paid_by: "user-1",
+        category: "food" as const,
+        expense_date: "2024-12-12",
         paid_by_profile: { id: "user-1", full_name: "Alice", avatar_url: null },
         splits: [
-            { id: "s1", expense_id: "e1", user_id: "user-1", amount: 50, percentage: null, is_settled: false, settled_at: null, created_at: "2024-12-12T10:00:00Z", profile: { id: "user-1", full_name: "Alice", avatar_url: null } },
-            { id: "s2", expense_id: "e1", user_id: "user-2", amount: 50, percentage: null, is_settled: false, settled_at: null, created_at: "2024-12-12T10:00:00Z", profile: { id: "user-2", full_name: "Bob", avatar_url: null } },
+            { id: "s1", user_id: "user-1", amount: 50, is_settled: false, profile: { id: "user-1", full_name: "Alice", avatar_url: null } },
+            { id: "s2", user_id: "user-2", amount: 50, is_settled: false, profile: { id: "user-2", full_name: "Bob", avatar_url: null } },
         ],
     };
 
@@ -47,4 +51,3 @@ describe("ExpenseCard", () => {
         expect(document.querySelector(".bg-orange-100")).toBeInTheDocument();
     });
 });
-

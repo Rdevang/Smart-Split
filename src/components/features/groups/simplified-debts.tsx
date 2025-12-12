@@ -5,6 +5,7 @@ import { ArrowRight, Sparkles, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
 import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simplify-debts";
 import { groupsService } from "@/services/groups";
 
@@ -18,6 +19,7 @@ interface SimplifiedDebtsProps {
 export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: SimplifiedDebtsProps) {
     const [settlingPayment, setSettlingPayment] = useState<string | null>(null);
     const [settledPayments, setSettledPayments] = useState<Set<string>>(new Set());
+    const { success, error: showError } = useToast();
 
     const payments = simplifyDebts(balances);
 
@@ -53,10 +55,14 @@ export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: 
 
             if (result.success) {
                 setSettledPayments((prev) => new Set([...prev, paymentKey]));
+                success(`Settlement of $${payment.amount.toFixed(2)} recorded!`, "Payment Settled");
                 onSettle?.();
+            } else {
+                showError(result.error || "Failed to record settlement");
             }
         } catch (error) {
             console.error("Failed to settle:", error);
+            showError("An unexpected error occurred");
         } finally {
             setSettlingPayment(null);
         }
