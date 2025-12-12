@@ -100,10 +100,10 @@ export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: 
                                 <div
                                     key={paymentKey}
                                     className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${isSettled
-                                            ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
-                                            : youOwe
-                                                ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
-                                                : "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                        ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                        : youOwe
+                                            ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                                            : "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
                                         }`}
                                 >
                                     <div className="flex items-center gap-3">
@@ -168,8 +168,8 @@ export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: 
                                 <div
                                     key={paymentKey}
                                     className={`flex items-center justify-between rounded-lg border p-3 ${isSettled
-                                            ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
-                                            : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50"
+                                        ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                        : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50"
                                         }`}
                                 >
                                     <div className="flex items-center gap-3">
