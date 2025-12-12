@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.3.0 | LAST UPDATED: 2024-12-12
+# VERSION: 2.2.0 | LAST UPDATED: 2024-12-11
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -402,45 +402,6 @@ npm run test:coverage # Coverage report
 
 ## LEARNINGS & DECISIONS LOG
 
-### 2024-12-12: Session 5 - Debt Simplification & Settlements
-
-#### Simplify Debts Algorithm:
-- **Pattern**: Greedy algorithm matching largest debtor with largest creditor
-- **Location**: `src/lib/simplify-debts.ts` - pure utility, no dependencies
-- **Complexity**: O(n log n) time, O(n) space
-- **Key insight**: Minimize transactions by pairing extremes first
-
-#### Algorithm Pattern for Financial Calculations:
-```tsx
-// Pure function pattern for complex financial logic
-export function simplifyDebts(balances: Balance[]): SimplifiedPayment[] {
-    // 1. Separate into creditors (positive) and debtors (negative)
-    // 2. Sort both by absolute amount (descending)
-    // 3. Match using two pointers
-    // 4. Create payment for min(debt, credit)
-    // 5. Move pointer when fully settled
-}
-```
-
-#### Settlement Flow:
-- `groupsService.recordSettlement()` - Records payment to `settlements` table
-- Also marks relevant `expense_splits` as settled
-- Logs activity for audit trail
-- UI shows "Settle" for payments you owe, "Mark Paid" for payments owed to you
-
-#### Floating Point Handling:
-- Always round to 2 decimal places: `Math.round(amount * 100) / 100`
-- Ignore tiny balances (< $0.01) to avoid noise
-- Test edge cases: 33.33 split scenarios, etc.
-
-#### Test Coverage for Algorithms:
-- Test empty/zero cases
-- Test 2-person simple case
-- Test 3+ person chain scenarios
-- Test minimization (verify fewer payments than naive approach)
-- Test floating point precision
-- Test placeholder member support
-
 ### 2024-12-11: Session 4 - Groups, Expenses & Dark Mode
 
 #### Groups & Expenses Feature:
@@ -632,8 +593,6 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Server vs Client services → Separate `*.server.ts` files for RSC usage
 - [x] Dark mode implementation → Class-based with localStorage persistence
 - [x] Form ID generation → React `useId()` hook for SSR safety
-- [x] Debt simplification → Greedy algorithm (match largest debtor/creditor pairs)
-- [x] Settlement recording → Store in `settlements` table + mark splits as settled
 
 ---
 
