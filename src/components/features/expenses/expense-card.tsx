@@ -4,18 +4,54 @@ import { useState } from "react";
 import Image from "next/image";
 import {
     Utensils, Car, Film, Zap, Home, ShoppingBag, Plane,
-    Heart, ShoppingCart, MoreHorizontal, Trash2, Receipt
+    Heart, ShoppingCart, MoreHorizontal, Trash2, Receipt, UserCircle
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { ExpenseWithDetails } from "@/services/expenses";
 import type { Database } from "@/types/database";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
 
+// Generic type that works with both server and client expense types
+interface Split {
+    id: string;
+    user_id: string | null;
+    placeholder_id?: string | null;
+    amount: number;
+    is_settled?: boolean;
+    profile?: {
+        id: string;
+        full_name: string | null;
+        avatar_url: string | null;
+    } | null;
+    placeholder?: {
+        id: string;
+        name: string;
+        email: string | null;
+    } | null;
+    is_placeholder?: boolean;
+    participant_name?: string;
+    participant_avatar?: string | null;
+}
+
+interface ExpenseCardExpense {
+    id: string;
+    description: string;
+    amount: number;
+    category: ExpenseCategory | null;
+    expense_date: string | null;
+    paid_by: string;
+    paid_by_profile: {
+        id: string;
+        full_name: string | null;
+        avatar_url: string | null;
+    } | null;
+    splits: Split[];
+}
+
 interface ExpenseCardProps {
-    expense: ExpenseWithDetails;
+    expense: ExpenseCardExpense;
     currentUserId: string;
     onDelete?: (expenseId: string) => void;
 }
@@ -45,6 +81,30 @@ const categoryColors: Record<ExpenseCategory, string> = {
     groceries: "bg-lime-100 text-lime-600 dark:bg-lime-900/30 dark:text-lime-400",
     other: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
+
+function getSplitDisplayInfo(split: Split, currentUserId: string) {
+    const isPlaceholder = split.is_placeholder || split.placeholder_id !== null;
+    const isCurrentUser = split.user_id === currentUserId;
+    
+    let name: string;
+    let avatarUrl: string | null = null;
+    
+    if (isCurrentUser) {
+        name = "You";
+    } else if (split.participant_name) {
+        name = split.participant_name.split(" ")[0];
+        avatarUrl = split.participant_avatar || null;
+    } else if (split.profile) {
+        name = split.profile.full_name?.split(" ")[0] || "Unknown";
+        avatarUrl = split.profile.avatar_url;
+    } else if (split.placeholder) {
+        name = split.placeholder.name.split(" ")[0];
+    } else {
+        name = "Unknown";
+    }
+    
+    return { name, avatarUrl, isPlaceholder, isCurrentUser };
+}
 
 export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardProps) {
     const [showActions, setShowActions] = useState(false);
@@ -104,38 +164,49 @@ export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardPro
 
                         {/* Splits */}
                         <div className="mt-3 flex flex-wrap gap-2">
-                            {expense.splits.map((split) => (
-                                <div
-                                    key={split.id}
-                                    className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 text-xs dark:bg-gray-800"
-                                >
-                                    {split.profile?.avatar_url ? (
-                                        <Image
-                                            src={split.profile.avatar_url}
-                                            alt={split.profile.full_name || ""}
-                                            width={16}
-                                            height={16}
-                                            className="rounded-full"
-                                            unoptimized
-                                        />
-                                    ) : (
-                                        <div className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-500 text-[10px] text-white">
-                                            {split.profile?.full_name?.[0] || "?"}
-                                        </div>
-                                    )}
-                                    <span className="text-gray-600 dark:text-gray-300">
-                                        {split.user_id === currentUserId ? "You" : split.profile?.full_name?.split(" ")[0]}
-                                    </span>
-                                    <span className="font-medium text-gray-900 dark:text-white">
-                                        ${split.amount.toFixed(2)}
-                                    </span>
-                                    {split.is_settled && (
-                                        <Badge variant="success" className="ml-1 text-[10px]">
-                                            Settled
-                                        </Badge>
-                                    )}
-                                </div>
-                            ))}
+                            {expense.splits.map((split) => {
+                                const { name, avatarUrl, isPlaceholder } = getSplitDisplayInfo(split, currentUserId);
+                                
+                                return (
+                                    <div
+                                        key={split.id}
+                                        className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-1 text-xs dark:bg-gray-800"
+                                    >
+                                        {avatarUrl ? (
+                                            <Image
+                                                src={avatarUrl}
+                                                alt={name}
+                                                width={16}
+                                                height={16}
+                                                className="rounded-full"
+                                                unoptimized
+                                            />
+                                        ) : isPlaceholder ? (
+                                            <UserCircle className="h-4 w-4 text-gray-400" />
+                                        ) : (
+                                            <div className="flex h-4 w-4 items-center justify-center rounded-full bg-teal-500 text-[10px] text-white">
+                                                {name[0]?.toUpperCase() || "?"}
+                                            </div>
+                                        )}
+                                        <span className="text-gray-600 dark:text-gray-300">
+                                            {name}
+                                        </span>
+                                        <span className="font-medium text-gray-900 dark:text-white">
+                                            ${split.amount.toFixed(2)}
+                                        </span>
+                                        {isPlaceholder && (
+                                            <Badge variant="warning" className="ml-1 text-[10px]">
+                                                Pending
+                                            </Badge>
+                                        )}
+                                        {split.is_settled && (
+                                            <Badge variant="success" className="ml-1 text-[10px]">
+                                                Settled
+                                            </Badge>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -171,4 +242,3 @@ export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardPro
         </Card>
     );
 }
-

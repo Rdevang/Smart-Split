@@ -5,9 +5,23 @@ type Expense = Database["public"]["Tables"]["expenses"]["Row"];
 type ExpenseSplit = Database["public"]["Tables"]["expense_splits"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
+export interface PlaceholderMember {
+    id: string;
+    name: string;
+    email: string | null;
+}
+
+export interface SplitWithParticipant extends ExpenseSplit {
+    profile: Profile | null;
+    placeholder: PlaceholderMember | null;
+    is_placeholder: boolean;
+    participant_name: string;
+    participant_avatar: string | null;
+}
+
 export interface ExpenseWithDetails extends Expense {
     paid_by_profile: Profile;
-    splits: (ExpenseSplit & { profile: Profile })[];
+    splits: SplitWithParticipant[];
 }
 
 export interface PaginationParams {
@@ -32,6 +46,18 @@ export interface ExpenseSummary {
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
+
+// Helper to transform splits with participant info
+function transformSplits(splits: any[]): SplitWithParticipant[] {
+    return (splits || []).map((s: any) => ({
+        ...s,
+        profile: s.profile || null,
+        placeholder: s.placeholder || null,
+        is_placeholder: s.placeholder_id !== null,
+        participant_name: s.profile?.full_name || s.placeholder?.name || "Unknown",
+        participant_avatar: s.profile?.avatar_url || null,
+    }));
+}
 
 export const expensesServerService = {
     /**
@@ -60,14 +86,20 @@ export const expensesServerService = {
                 expense_splits (
                     id,
                     user_id,
+                    placeholder_id,
                     amount,
                     percentage,
                     is_settled,
-                    profile:profiles!inner (
+                    profile:profiles (
                         id,
                         email,
                         full_name,
                         avatar_url
+                    ),
+                    placeholder:placeholder_members (
+                        id,
+                        name,
+                        email
                     )
                 )
             `, { count: "exact" })
@@ -84,7 +116,7 @@ export const expensesServerService = {
         const data = expenses.map((expense) => ({
             ...expense,
             paid_by_profile: expense.paid_by_profile as Profile,
-            splits: (expense.expense_splits || []) as (ExpenseSplit & { profile: Profile })[],
+            splits: transformSplits(expense.expense_splits),
         }));
 
         return {
@@ -123,14 +155,20 @@ export const expensesServerService = {
                 expense_splits (
                     id,
                     user_id,
+                    placeholder_id,
                     amount,
                     percentage,
                     is_settled,
-                    profile:profiles!inner (
+                    profile:profiles (
                         id,
                         email,
                         full_name,
                         avatar_url
+                    ),
+                    placeholder:placeholder_members (
+                        id,
+                        name,
+                        email
                     )
                 )
             `, { count: "exact" })
@@ -147,7 +185,7 @@ export const expensesServerService = {
         const data = expenses.map((expense) => ({
             ...expense,
             paid_by_profile: expense.paid_by_profile as Profile,
-            splits: (expense.expense_splits || []) as (ExpenseSplit & { profile: Profile })[],
+            splits: transformSplits(expense.expense_splits),
         }));
 
         return {
@@ -243,15 +281,21 @@ export const expensesServerService = {
                 expense_splits (
                     id,
                     user_id,
+                    placeholder_id,
                     amount,
                     percentage,
                     is_settled,
                     settled_at,
-                    profile:profiles!inner (
+                    profile:profiles (
                         id,
                         email,
                         full_name,
                         avatar_url
+                    ),
+                    placeholder:placeholder_members (
+                        id,
+                        name,
+                        email
                     )
                 )
             `)
@@ -266,7 +310,7 @@ export const expensesServerService = {
         return {
             ...expense,
             paid_by_profile: expense.paid_by_profile as Profile,
-            splits: (expense.expense_splits || []) as (ExpenseSplit & { profile: Profile })[],
+            splits: transformSplits(expense.expense_splits),
         };
     },
 
