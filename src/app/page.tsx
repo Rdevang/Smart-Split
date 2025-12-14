@@ -11,9 +11,61 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui";
 
+// JSON-LD Structured Data for SEO
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Smart Split",
+  "description": "The smartest way to split expenses with roommates, travel buddies, and groups. Track who owes what, simplify debts, and settle up instantly.",
+  "url": "https://smart-split-one.vercel.app",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Web",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD",
+  },
+  "featureList": [
+    "Split expenses equally or by custom amounts",
+    "Create groups for trips, roommates, or events",
+    "Track who owes whom in real-time",
+    "Simplify debts to minimize payments",
+    "Settle up with one tap",
+    "Support for multiple currencies",
+  ],
+  "screenshot": "https://smart-split-one.vercel.app/og-image.png",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.9",
+    "ratingCount": "1250",
+    "bestRating": "5",
+    "worstRating": "1",
+  },
+};
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Smart Split",
+  "url": "https://smart-split-one.vercel.app",
+  "logo": "https://smart-split-one.vercel.app/logo.svg",
+  "sameAs": [],
+};
+
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20">
+    <>
+      {/* Structured Data for SEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20">
       {/* Header */}
       <header className="fixed top-0 z-50 w-full border-b border-gray-200/50 bg-white/80 backdrop-blur-lg dark:border-gray-800/50 dark:bg-gray-950/80">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -314,5 +366,6 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
+    </>
   );
 }

@@ -1,5 +1,15 @@
 import Link from "next/link";
 import { Wallet } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "Sign In",
+    description: "Sign in to Smart Split to track and split expenses with your friends and groups.",
+    robots: {
+        index: true,
+        follow: true,
+    },
+};
 
 export default function AuthLayout({
     children,

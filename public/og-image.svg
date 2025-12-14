@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" fill="none">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6"/>
+      <stop offset="100%" style="stop-color:#0d9488"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGrad)"/>
+  
+  <!-- Decorative circles -->
+  <circle cx="1100" cy="100" r="200" fill="#14b8a6" opacity="0.1"/>
+  <circle cx="100" cy="530" r="150" fill="#14b8a6" opacity="0.1"/>
+  
+  <!-- Logo icon -->
+  <g transform="translate(100, 200)">
+    <rect width="80" height="80" rx="20" fill="url(#tealGrad)"/>
+    <path d="M28 34 L22 40 L28 46" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M52 34 L58 40 L52 46" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="40" cy="40" r="10" fill="white"/>
+    <text x="40" y="45" font-family="system-ui" font-size="12" font-weight="700" fill="#0d9488" text-anchor="middle">$</text>
+  </g>
+  
+  <!-- Title -->
+  <text x="200" y="255" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="800" fill="white">
+    Smart<tspan fill="#14b8a6">Split</tspan>
+  </text>
+  
+  <!-- Tagline -->
+  <text x="100" y="340" font-family="system-ui, -apple-system, sans-serif" font-size="32" fill="#94a3b8">
+    Split expenses, not friendships
+  </text>
+  
+  <!-- Features -->
+  <g transform="translate(100, 420)" font-family="system-ui" font-size="20" fill="#64748b">
+    <circle cx="10" cy="-5" r="6" fill="#14b8a6"/>
+    <text x="30" y="0">Track group expenses</text>
+    
+    <circle cx="310" cy="-5" r="6" fill="#14b8a6"/>
+    <text x="330" y="0">Simplify debts</text>
+    
+    <circle cx="540" cy="-5" r="6" fill="#14b8a6"/>
+    <text x="560" y="0">Settle up instantly</text>
+  </g>
+  
+  <!-- URL -->
+  <text x="100" y="570" font-family="system-ui" font-size="24" fill="#475569">
+    smart-split-one.vercel.app
+  </text>
+</svg>
+
