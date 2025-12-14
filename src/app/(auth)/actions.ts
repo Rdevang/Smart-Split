@@ -139,3 +139,65 @@ export async function resetPassword(formData: FormData) {
     revalidatePath("/", "layout");
     redirect("/dashboard");
 }
+
+// Phone Authentication
+export async function sendPhoneOTP(formData: FormData) {
+    const supabase = await createClient();
+
+    const phone = formData.get("phone") as string;
+
+    // Send OTP to phone number
+    const { error } = await supabase.auth.signInWithOtp({
+        phone,
+    });
+
+    if (error) {
+        return { error: error.message };
+    }
+
+    return { success: true };
+}
+
+export async function verifyPhoneOTP(formData: FormData) {
+    const supabase = await createClient();
+
+    const phone = formData.get("phone") as string;
+    const token = formData.get("token") as string;
+
+    const { error } = await supabase.auth.verifyOtp({
+        phone,
+        token,
+        type: "sms",
+    });
+
+    if (error) {
+        return { error: error.message };
+    }
+
+    revalidatePath("/", "layout");
+    redirect("/dashboard");
+}
+
+export async function signUpWithPhone(formData: FormData) {
+    const supabase = await createClient();
+
+    const phone = formData.get("phone") as string;
+    const fullName = formData.get("full_name") as string;
+
+    // Sign up with phone - this sends an OTP
+    const { error } = await supabase.auth.signUp({
+        phone,
+        password: crypto.randomUUID(), // Generate random password for phone-only auth
+        options: {
+            data: {
+                full_name: fullName,
+            },
+        },
+    });
+
+    if (error) {
+        return { error: error.message };
+    }
+
+    return { success: true };
+}

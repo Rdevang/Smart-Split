@@ -12,3 +12,5 @@ export { Spinner } from "./spinner";
 export { Link } from "./link";
 export { ToastProvider, useToast, type Toast, type ToastVariant } from "./toast";
 export { ConfirmDialog } from "./confirm-dialog";
+export { PhoneInput, type PhoneInputProps } from "./phone-input";
+export { CameraCapture } from "./camera-capture";

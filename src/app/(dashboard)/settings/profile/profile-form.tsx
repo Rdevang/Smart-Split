@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Image from "next/image";
-import { User, Mail, Phone, Globe, Camera, Trash2, Loader2 } from "lucide-react";
+import { User, Mail, Phone, Globe, Camera, Trash2, Loader2, Upload } from "lucide-react";
 import {
     Button,
     Input,
@@ -15,6 +15,7 @@ import {
     CardHeader,
     CardTitle,
     CardDescription,
+    CameraCapture,
 } from "@/components/ui";
 import { profileService } from "@/services/profile";
 
@@ -43,6 +44,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
     const [isDeletingAvatar, setIsDeletingAvatar] = useState(false);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatar_url);
     const [message, setMessage] = useState<{
         type: "success" | "error";
@@ -148,6 +150,32 @@ export function ProfileForm({ user }: ProfileFormProps) {
         }
     };
 
+    const handleCameraCapture = async (file: File) => {
+        setIsUploadingAvatar(true);
+        setMessage(null);
+
+        try {
+            const result = await profileService.uploadAvatar(user.id, file);
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            if (result.url) {
+                setAvatarUrl(result.url);
+                setMessage({ type: "success", text: "Profile picture updated!" });
+                router.refresh();
+            }
+        } catch (error) {
+            setMessage({
+                type: "error",
+                text: error instanceof Error ? error.message : "Failed to upload image",
+            });
+        } finally {
+            setIsUploadingAvatar(false);
+        }
+    };
+
     const currencies = [
         { value: "USD", label: "US Dollar ($)" },
         { value: "EUR", label: "Euro (€)" },
@@ -219,7 +247,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
                         {/* Actions */}
                         <div className="flex flex-col gap-3">
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 <input
                                     ref={fileInputRef}
                                     type="file"
@@ -237,9 +265,19 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                     {isUploadingAvatar ? (
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     ) : (
-                                        <Camera className="mr-2 h-4 w-4" />
+                                        <Upload className="mr-2 h-4 w-4" />
                                     )}
-                                    {avatarUrl ? "Change Photo" : "Upload Photo"}
+                                    Upload
+                                </Button>
+
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setIsCameraOpen(true)}
+                                    disabled={isUploadingAvatar || isDeletingAvatar}
+                                >
+                                    <Camera className="mr-2 h-4 w-4" />
+                                    Take Photo
                                 </Button>
 
                                 {avatarUrl && (
@@ -364,6 +402,13 @@ export function ProfileForm({ user }: ProfileFormProps) {
                     </dl>
                 </CardContent>
             </Card>
+
+            {/* Camera Capture Modal */}
+            <CameraCapture
+                isOpen={isCameraOpen}
+                onClose={() => setIsCameraOpen(false)}
+                onCapture={handleCameraCapture}
+            />
         </div>
     );
 }

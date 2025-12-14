@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Background circle with gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6"/>
+      <stop offset="100%" style="stop-color:#0d9488"/>
+    </linearGradient>
+    <linearGradient id="splitGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#f0fdfa"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Main circle background -->
+  <circle cx="100" cy="100" r="90" fill="url(#bgGradient)"/>
+  
+  <!-- Split symbol - Two arrows pointing outward representing splitting -->
+  <g transform="translate(100, 100)">
+    <!-- Left split arrow -->
+    <path d="M-10 -25 L-40 0 L-10 25 L-10 10 L-5 10 L-5 -10 L-10 -10 Z" 
+          fill="white" opacity="0.95"/>
+    
+    <!-- Right split arrow -->
+    <path d="M10 -25 L40 0 L10 25 L10 10 L5 10 L5 -10 L10 -10 Z" 
+          fill="white" opacity="0.95"/>
+    
+    <!-- Center dollar sign -->
+    <text x="0" y="8" 
+          font-family="system-ui, -apple-system, sans-serif" 
+          font-size="28" 
+          font-weight="700" 
+          fill="white" 
+          text-anchor="middle">$</text>
+  </g>
+  
+  <!-- Subtle inner shadow for depth -->
+  <circle cx="100" cy="100" r="85" fill="none" stroke="white" stroke-width="2" opacity="0.2"/>
+</svg>

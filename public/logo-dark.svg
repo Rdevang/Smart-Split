@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Background circle with dark theme -->
+  <circle cx="100" cy="100" r="90" fill="url(#gradient-dark)" />
+  
+  <!-- Outer ring -->
+  <circle cx="100" cy="100" r="85" stroke="url(#ring-gradient)" stroke-width="2" fill="none" opacity="0.5"/>
+  
+  <!-- Split line -->
+  <path d="M100 40 L100 160" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+  
+  <!-- Left arrow (money going out) -->
+  <path d="M70 80 L50 100 L70 120" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M50 100 L95 100" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round"/>
+  
+  <!-- Right arrow (money coming in) -->
+  <path d="M130 80 L150 100 L130 120" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M105 100 L150 100" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round"/>
+  
+  <!-- Dollar signs -->
+  <text x="62" y="62" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#5eead4" opacity="0.7">$</text>
+  <text x="128" y="62" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#5eead4" opacity="0.7">$</text>
+  <text x="62" y="155" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#5eead4" opacity="0.7">$</text>
+  <text x="128" y="155" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#5eead4" opacity="0.7">$</text>
+  
+  <defs>
+    <linearGradient id="gradient-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#134e4a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f766e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="ring-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2dd4bf;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#14b8a6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>

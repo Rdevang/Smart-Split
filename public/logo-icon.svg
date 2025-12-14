@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Compact icon version for favicon/small displays -->
+  <rect width="48" height="48" rx="12" fill="url(#icon-gradient)"/>
+  
+  <!-- Split arrows simplified -->
+  <path d="M16 20 L12 24 L16 28" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M12 24 L22 24" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <path d="M32 20 L36 24 L32 28" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M26 24 L36 24" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <!-- Center divider -->
+  <path d="M24 14 L24 34" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  
+  <defs>
+    <linearGradient id="icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6"/>
+      <stop offset="100%" style="stop-color:#0d9488"/>
+    </linearGradient>
+  </defs>
+</svg>

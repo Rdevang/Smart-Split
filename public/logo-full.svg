@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 60" fill="none">
+  <!-- Icon -->
+  <rect x="5" y="6" width="48" height="48" rx="12" fill="url(#full-gradient)"/>
+  
+  <!-- Split arrows -->
+  <path d="M21 26 L17 30 L21 34" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M17 30 L27 30" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <path d="M37 26 L41 30 L37 34" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M31 30 L41 30" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  
+  <path d="M29 18 L29 42" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  
+  <!-- Text: Smart -->
+  <text x="65" y="40" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="700" fill="#111827">
+    Smart
+  </text>
+  
+  <!-- Text: Split (teal) -->
+  <text x="158" y="40" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="700" fill="#14b8a6">
+    Split
+  </text>
+  
+  <defs>
+    <linearGradient id="full-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6"/>
+      <stop offset="100%" style="stop-color:#0d9488"/>
+    </linearGradient>
+  </defs>
+</svg>
