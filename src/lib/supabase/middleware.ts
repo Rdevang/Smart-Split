@@ -12,15 +12,28 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.next({ request });
     }
 
-    // Handle password recovery code on root URL
-    // Supabase PKCE sends users to /?code=xxx for password recovery
-    // We need to redirect to the auth callback with the code
+    // Handle auth codes on root URL
+    // Supabase sends users to /?code=xxx&type=xxx for various auth flows
     const code = request.nextUrl.searchParams.get("code");
+    const type = request.nextUrl.searchParams.get("type");
+
     if (request.nextUrl.pathname === "/" && code) {
         const url = request.nextUrl.clone();
         url.pathname = "/auth/callback";
         url.searchParams.set("code", code);
-        url.searchParams.set("next", "/reset-password");
+
+        // Route based on auth type
+        if (type === "recovery") {
+            // Password recovery → go to reset password page
+            url.searchParams.set("next", "/reset-password");
+        } else if (type === "signup" || type === "email_change") {
+            // Email verification → go to dashboard
+            url.searchParams.set("next", "/dashboard");
+        } else {
+            // Default to dashboard for unknown types
+            url.searchParams.set("next", "/dashboard");
+        }
+
         return NextResponse.redirect(url);
     }
 

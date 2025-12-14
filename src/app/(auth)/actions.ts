@@ -29,13 +29,19 @@ export async function register(formData: FormData) {
     const password = formData.get("password") as string;
     const fullName = formData.get("full_name") as string;
 
-    const { error } = await supabase.auth.signUp({
+    // Get the site URL for email confirmation redirect
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+        || "http://localhost:3000";
+
+    const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
             data: {
                 full_name: fullName,
             },
+            emailRedirectTo: `${siteUrl}/auth/callback?type=signup`,
         },
     });
 
@@ -43,6 +49,14 @@ export async function register(formData: FormData) {
         return { error: error.message };
     }
 
+    // Check if email confirmation is required
+    // If user is created but not confirmed, redirect to verify-email page
+    if (data.user && !data.session) {
+        // Email confirmation is required
+        redirect(`/verify-email?email=${encodeURIComponent(email)}`);
+    }
+
+    // If session exists (email confirmation disabled), go to dashboard
     revalidatePath("/", "layout");
     redirect("/dashboard");
 }
