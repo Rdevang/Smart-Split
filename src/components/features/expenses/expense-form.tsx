@@ -127,13 +127,11 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
     const amount = watch("amount");
     const paidBy = watch("paid_by");
 
-    // Only real users can be "paid by" (not placeholders)
-    const paidByOptions = group.members
-        .filter((m) => !m.is_placeholder && m.user_id)
-        .map((m) => ({
-            value: m.user_id!,
-            label: getMemberName(m, userId),
-        }));
+    // All members can be "paid by" (including placeholders)
+    const paidByOptions = group.members.map((m) => ({
+        value: getMemberId(m),
+        label: getMemberName(m, userId),
+    }));
 
     // Calculate equal splits when amount or selected members change
     useEffect(() => {
@@ -156,9 +154,21 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
     };
 
     const handleSplitChange = (memberId: string, value: string) => {
+        let numValue = Number(value) || 0;
+        
+        // Cap at 100 for percentage mode
+        if (splitType === "percentage" && numValue > 100) {
+            numValue = 100;
+        }
+        
+        // Don't allow negative values
+        if (numValue < 0) {
+            numValue = 0;
+        }
+        
         setCustomSplits((prev) => ({
             ...prev,
-            [memberId]: Number(value) || 0,
+            [memberId]: numValue,
         }));
     };
 
@@ -208,12 +218,19 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
         }
 
         try {
+            // Determine if payer is a placeholder or registered user
+            const isPayerPlaceholder = data.paid_by.startsWith("placeholder:");
+            const payerId = isPayerPlaceholder 
+                ? data.paid_by.replace("placeholder:", "") 
+                : data.paid_by;
+
             const result = await expensesService.createExpense(
                 {
                     group_id: group.id,
                     description: data.description,
                     amount: totalAmount,
-                    paid_by: data.paid_by,
+                    paid_by: isPayerPlaceholder ? undefined : payerId,
+                    paid_by_placeholder_id: isPayerPlaceholder ? payerId : undefined,
                     category: data.category as ExpenseCategory,
                     split_type: splitType,
                     expense_date: data.expense_date,

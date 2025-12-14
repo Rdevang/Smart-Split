@@ -20,7 +20,8 @@ export interface SplitWithParticipant extends ExpenseSplit {
 }
 
 export interface ExpenseWithDetails extends Expense {
-    paid_by_profile: Profile;
+    paid_by_profile: Profile | null;
+    paid_by_placeholder: PlaceholderMember | null;
     splits: SplitWithParticipant[];
 }
 
@@ -83,6 +84,11 @@ export const expensesServerService = {
                     full_name,
                     avatar_url
                 ),
+                paid_by_placeholder:placeholder_members!expenses_paid_by_placeholder_id_fkey (
+                    id,
+                    name,
+                    email
+                ),
                 expense_splits (
                     id,
                     user_id,
@@ -113,9 +119,10 @@ export const expensesServerService = {
         }
 
         const total = count || 0;
-        const data = expenses.map((expense) => ({
+        const data = expenses.map((expense: any) => ({
             ...expense,
-            paid_by_profile: expense.paid_by_profile as Profile,
+            paid_by_profile: expense.paid_by_profile as Profile | null,
+            paid_by_placeholder: expense.paid_by_placeholder as PlaceholderMember | null,
             splits: transformSplits(expense.expense_splits),
         }));
 
@@ -152,6 +159,11 @@ export const expensesServerService = {
                     full_name,
                     avatar_url
                 ),
+                paid_by_placeholder:placeholder_members!expenses_paid_by_placeholder_id_fkey (
+                    id,
+                    name,
+                    email
+                ),
                 expense_splits (
                     id,
                     user_id,
@@ -182,9 +194,10 @@ export const expensesServerService = {
         }
 
         const total = count || 0;
-        const data = expenses.map((expense) => ({
+        const data = expenses.map((expense: any) => ({
             ...expense,
-            paid_by_profile: expense.paid_by_profile as Profile,
+            paid_by_profile: expense.paid_by_profile as Profile | null,
+            paid_by_placeholder: expense.paid_by_placeholder as PlaceholderMember | null,
             splits: transformSplits(expense.expense_splits),
         }));
 

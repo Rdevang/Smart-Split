@@ -16,7 +16,8 @@ export interface CreateExpenseInput {
     group_id: string;
     description: string;
     amount: number;
-    paid_by: string;
+    paid_by?: string;
+    paid_by_placeholder_id?: string;
     category?: ExpenseCategory;
     split_type: SplitType;
     expense_date?: string;
@@ -146,19 +147,27 @@ export const expensesService = {
             };
         }
 
-        // Create expense
+        // Create expense - handle both registered users and placeholders as payers
+        const expenseData: Record<string, unknown> = {
+            group_id: input.group_id,
+            description: input.description,
+            amount: input.amount,
+            category: input.category || "other",
+            split_type: input.split_type,
+            expense_date: input.expense_date || new Date().toISOString().split("T")[0],
+            notes: input.notes || null,
+        };
+
+        // Set either paid_by (user) or paid_by_placeholder_id (placeholder)
+        if (input.paid_by_placeholder_id) {
+            expenseData.paid_by_placeholder_id = input.paid_by_placeholder_id;
+        } else if (input.paid_by) {
+            expenseData.paid_by = input.paid_by;
+        }
+
         const { data: expense, error: expenseError } = await supabase
             .from("expenses")
-            .insert({
-                group_id: input.group_id,
-                description: input.description,
-                amount: input.amount,
-                paid_by: input.paid_by,
-                category: input.category || "other",
-                split_type: input.split_type,
-                expense_date: input.expense_date || new Date().toISOString().split("T")[0],
-                notes: input.notes || null,
-            })
+            .insert(expenseData)
             .select()
             .single();
 

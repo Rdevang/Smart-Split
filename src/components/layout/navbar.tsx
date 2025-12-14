@@ -15,11 +15,13 @@ import {
     ChevronDown,
     Menu,
     X,
+    UserPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/(auth)/actions";
 import Image from "next/image";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { NotificationBell } from "@/components/layout/notification-bell";
 
 interface NavbarProps {
     user: {
@@ -33,6 +35,7 @@ interface NavbarProps {
 const navLinks = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/groups", label: "Groups", icon: Users },
+    { href: "/friends", label: "Friends", icon: UserPlus },
     { href: "/expenses", label: "Expenses", icon: Receipt },
     { href: "/activity", label: "Activity", icon: PieChart },
 ];
@@ -102,6 +105,9 @@ export function Navbar({ user }: NavbarProps) {
                 <div className="flex items-center gap-3">
                     {/* Theme Toggle */}
                     <ThemeToggle />
+
+                    {/* Notifications */}
+                    <NotificationBell userId={user.id} />
 
                     {/* Profile Dropdown */}
                     <div className="relative" ref={profileRef}>

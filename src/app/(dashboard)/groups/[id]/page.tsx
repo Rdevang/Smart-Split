@@ -253,7 +253,18 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                     <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
                                         Add Member
                                     </p>
-                                    <AddMemberForm groupId={id} userId={user.id} />
+                                    <AddMemberForm 
+                                        groupId={id} 
+                                        userId={user.id}
+                                        existingMemberIds={group.members
+                                            .filter((m) => !m.is_placeholder)
+                                            .map((m) => m.user_id || "")
+                                            .filter(Boolean)}
+                                        existingMemberNames={group.members
+                                            .filter((m) => m.is_placeholder)
+                                            .map((m) => m.placeholder?.name || "")
+                                            .filter(Boolean)}
+                                    />
                                 </div>
                             )}
                         </CardContent>
@@ -263,6 +274,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                     <SimplifiedDebts
                         groupId={id}
                         balances={balances}
+                        expenses={expenses}
                         currentUserId={user.id}
                     />
                 </div>

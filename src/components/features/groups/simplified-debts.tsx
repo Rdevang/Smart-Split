@@ -9,68 +9,130 @@ import { useToast } from "@/components/ui/toast";
 import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simplify-debts";
 import { groupsService } from "@/services/groups";
 
+interface ExpenseSplit {
+    user_id: string | null;
+    placeholder_id?: string | null;
+    amount: number;
+    profile?: { id: string; full_name: string | null } | null;
+    placeholder?: { id: string; name: string } | null;
+}
+
+interface Expense {
+    id: string;
+    paid_by: string | null;
+    paid_by_placeholder_id?: string | null;
+    paid_by_profile?: { id: string; full_name: string | null } | null;
+    paid_by_placeholder?: { id: string; name: string } | null;
+    splits: ExpenseSplit[];
+}
+
 interface SimplifiedDebtsProps {
     groupId: string;
     balances: Balance[];
+    expenses: Expense[];
     currentUserId: string;
     onSettle?: () => void;
 }
 
 /**
- * Generates raw/unsimplified debts where each debtor pays each creditor proportionally.
- * This results in more payments but shows direct relationships.
+ * Calculate raw per-expense debts with netting between pairs.
+ * Each person who owes on an expense pays the person who paid for that expense.
+ * Bidirectional debts between the same two people are netted out.
  */
-function getRawDebts(balances: Balance[]): SimplifiedPayment[] {
-    const payments: SimplifiedPayment[] = [];
+function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): SimplifiedPayment[] {
+    // Track gross debts: key is "fromId-toId", value is the debt info
+    const grossDebts = new Map<string, SimplifiedPayment>();
 
-    // Separate into creditors and debtors
-    const creditors: Balance[] = [];
-    const debtors: Balance[] = [];
+    for (const expense of expenses) {
+        // Determine who paid
+        const payerId = expense.paid_by || expense.paid_by_placeholder_id;
+        if (!payerId) continue;
 
-    for (const balance of balances) {
-        const amount = Math.round(balance.balance * 100) / 100;
-        if (amount > 0.01) {
-            creditors.push({ ...balance, balance: amount });
-        } else if (amount < -0.01) {
-            debtors.push({ ...balance, balance: Math.abs(amount) });
-        }
-    }
+        const payerName = expense.paid_by_profile?.full_name ||
+            expense.paid_by_placeholder?.name ||
+            "Unknown";
+        const payerIsPlaceholder = !!expense.paid_by_placeholder_id;
 
-    // Calculate total credit and total debt
-    const totalCredit = creditors.reduce((sum, c) => sum + c.balance, 0);
+        // Each split participant owes the payer (except the payer themselves)
+        for (const split of expense.splits) {
+            const participantId = split.user_id || split.placeholder_id;
+            if (!participantId || participantId === payerId) continue;
 
-    // Each debtor pays each creditor proportionally
-    for (const debtor of debtors) {
-        for (const creditor of creditors) {
-            // Debtor's share to this creditor = debtor's debt * (creditor's credit / total credit)
-            const amount = Math.round((debtor.balance * (creditor.balance / totalCredit)) * 100) / 100;
+            const participantName = split.profile?.full_name ||
+                split.placeholder?.name ||
+                "Unknown";
+            const participantIsPlaceholder = !!split.placeholder_id;
 
-            if (amount > 0.01) {
-                payments.push({
-                    from_user_id: debtor.user_id,
-                    from_user_name: debtor.user_name,
-                    to_user_id: creditor.user_id,
-                    to_user_name: creditor.user_name,
-                    amount,
-                    from_is_placeholder: debtor.is_placeholder,
-                    to_is_placeholder: creditor.is_placeholder,
+            // Create debt: participant owes payer
+            const key = `${participantId}-${payerId}`;
+            const existing = grossDebts.get(key);
+
+            if (existing) {
+                existing.amount += split.amount;
+            } else {
+                grossDebts.set(key, {
+                    from_user_id: participantId,
+                    from_user_name: participantName,
+                    to_user_id: payerId,
+                    to_user_name: payerName,
+                    amount: split.amount,
+                    from_is_placeholder: participantIsPlaceholder,
+                    to_is_placeholder: payerIsPlaceholder,
                 });
             }
         }
     }
 
-    return payments;
+    // Net out bidirectional debts between same pairs
+    const processedPairs = new Set<string>();
+    const nettedDebts: SimplifiedPayment[] = [];
+
+    for (const [key, debt] of grossDebts) {
+        // Create a canonical pair key (sorted IDs)
+        const pairKey = [debt.from_user_id, debt.to_user_id].sort().join(":");
+        if (processedPairs.has(pairKey)) continue;
+        processedPairs.add(pairKey);
+
+        // Check for reverse debt
+        const reverseKey = `${debt.to_user_id}-${debt.from_user_id}`;
+        const reverseDebt = grossDebts.get(reverseKey);
+
+        if (reverseDebt) {
+            // Net out the debts
+            const netAmount = Math.round((debt.amount - reverseDebt.amount) * 100) / 100;
+            
+            if (netAmount > 0.01) {
+                // Original direction wins
+                nettedDebts.push({ ...debt, amount: netAmount });
+            } else if (netAmount < -0.01) {
+                // Reverse direction wins
+                nettedDebts.push({ ...reverseDebt, amount: Math.abs(netAmount) });
+            }
+            // If netAmount is ~0, no debt needed
+        } else {
+            // No reverse debt, keep original
+            const amount = Math.round(debt.amount * 100) / 100;
+            if (amount > 0.01) {
+                nettedDebts.push({ ...debt, amount });
+            }
+        }
+    }
+
+    return nettedDebts;
 }
 
-export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: SimplifiedDebtsProps) {
+export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, onSettle }: SimplifiedDebtsProps) {
     const [settlingPayment, setSettlingPayment] = useState<string | null>(null);
     const [settledPayments, setSettledPayments] = useState<Set<string>>(new Set());
     const [isSimplified, setIsSimplified] = useState(true);
     const { success, error: showError } = useToast();
 
     const payments = useMemo(() => {
-        return isSimplified ? simplifyDebts(balances) : getRawDebts(balances);
-    }, [balances, isSimplified]);
+        if (isSimplified) {
+            return simplifyDebts(balances);
+        }
+        return getRawDebtsFromExpenses(expenses, balances);
+    }, [balances, expenses, isSimplified]);
 
     if (payments.length === 0) {
         return (
@@ -135,7 +197,7 @@ export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: 
                         ) : (
                             <List className="h-4 w-4 text-blue-500" />
                         )}
-                        {isSimplified ? "Simplified Debts" : "All Debts"}
+                        {isSimplified ? "Simplified Debts" : "Raw Debts"}
                     </CardTitle>
                     <Badge variant="info">
                         {payments.length} payment{payments.length !== 1 ? "s" : ""}
@@ -196,9 +258,6 @@ export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: 
                                                 {youOwe ? payment.to_user_name : "You"}
                                             </span>
                                         </div>
-                                        {payment.from_is_placeholder && (
-                                            <Badge variant="warning" className="text-[10px]">Not signed up</Badge>
-                                        )}
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="text-sm font-bold text-gray-900 dark:text-white">
@@ -260,9 +319,6 @@ export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: 
                                                 {payment.to_user_name}
                                             </span>
                                         </div>
-                                        {(payment.from_is_placeholder || payment.to_is_placeholder) && (
-                                            <Badge variant="warning" className="text-[10px]">Has placeholder</Badge>
-                                        )}
                                     </div>
                                     <span className="text-sm font-medium text-gray-900 dark:text-white">
                                         ${payment.amount.toFixed(2)}
@@ -276,11 +332,10 @@ export function SimplifiedDebts({ groupId, balances, currentUserId, onSettle }: 
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
                     {isSimplified
                         ? "💡 Debts are simplified to minimize the number of payments needed"
-                        : "📋 Showing all individual debts between members"
+                        : "📋 Showing per-expense debts (who owes each payer)"
                     }
                 </p>
             </CardContent>
         </Card>
     );
 }
-

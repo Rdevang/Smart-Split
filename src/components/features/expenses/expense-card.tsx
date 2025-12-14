@@ -41,11 +41,17 @@ interface ExpenseCardExpense {
     amount: number;
     category: ExpenseCategory | null;
     expense_date: string | null;
-    paid_by: string;
+    paid_by: string | null;
+    paid_by_placeholder_id?: string | null;
     paid_by_profile: {
         id: string;
         full_name: string | null;
         avatar_url: string | null;
+    } | null;
+    paid_by_placeholder?: {
+        id: string;
+        name: string;
+        email: string | null;
     } | null;
     splits: Split[];
 }
@@ -113,6 +119,14 @@ export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardPro
     const [showActions, setShowActions] = useState(false);
     const category = expense.category || "other";
     const paidByUser = expense.paid_by === currentUserId;
+    
+    // Get payer name - could be current user, registered user, or placeholder
+    const getPayerName = () => {
+        if (paidByUser) return "you";
+        if (expense.paid_by_profile?.full_name) return expense.paid_by_profile.full_name;
+        if (expense.paid_by_placeholder?.name) return expense.paid_by_placeholder.name;
+        return "Unknown";
+    };
 
     const userSplit = expense.splits.find((s) => s.user_id === currentUserId);
     const userOwes = userSplit && !paidByUser ? userSplit.amount : 0;
@@ -144,7 +158,7 @@ export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardPro
                                 <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
                                     {formattedDate} • Paid by{" "}
                                     <span className="font-medium">
-                                        {paidByUser ? "you" : expense.paid_by_profile?.full_name || "Unknown"}
+                                        {getPayerName()}
                                     </span>
                                 </p>
                             </div>

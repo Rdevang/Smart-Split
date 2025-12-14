@@ -223,7 +223,7 @@ export const groupsService = {
         groupId: string,
         email: string,
         addedBy: string
-    ): Promise<{ success: boolean; error?: string }> {
+    ): Promise<{ success: boolean; error?: string; inviteSent?: boolean }> {
         const supabase = createClient();
 
         // Find user by email
@@ -249,30 +249,27 @@ export const groupsService = {
             return { success: false, error: "User is already a member of this group" };
         }
 
-        // Add member
-        const { error: addError } = await supabase
-            .from("group_members")
-            .insert({
-                group_id: groupId,
-                user_id: profile.id,
-                role: "member",
-            });
+        // Get group name and inviter name for the invitation
+        const [{ data: group }, { data: inviter }] = await Promise.all([
+            supabase.from("groups").select("name").eq("id", groupId).single(),
+            supabase.from("profiles").select("full_name, email").eq("id", addedBy).single(),
+        ]);
 
-        if (addError) {
-            return { success: false, error: addError.message };
+        // Send invitation instead of directly adding
+        const { notificationsService } = await import("@/services/notifications");
+        const inviteResult = await notificationsService.sendGroupInvitation(
+            groupId,
+            profile.id,
+            addedBy,
+            group?.name || "Unknown Group",
+            inviter?.full_name || inviter?.email || "Someone"
+        );
+
+        if (!inviteResult.success) {
+            return { success: false, error: inviteResult.error };
         }
 
-        // Log activity
-        await supabase.from("activities").insert({
-            user_id: addedBy,
-            group_id: groupId,
-            entity_type: "member",
-            entity_id: profile.id,
-            action: "added",
-            metadata: { member_name: profile.full_name },
-        });
-
-        return { success: true };
+        return { success: true, inviteSent: true };
     },
 
     async addPlaceholderMember(
