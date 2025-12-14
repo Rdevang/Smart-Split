@@ -166,27 +166,45 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
         setIsLoading(true);
         setError(null);
 
+        const totalAmount = Number(data.amount);
+
+        // For percentage splits, validate that percentages add up to 100
+        if (splitType === "percentage") {
+            const percentageTotal = Object.values(customSplits).reduce((sum, val) => sum + val, 0);
+            if (Math.abs(percentageTotal - 100) > 0.01) {
+                setError(`Percentages must add up to 100% (currently ${percentageTotal.toFixed(1)}%)`);
+                setIsLoading(false);
+                return;
+            }
+        }
+
         // Build splits array - handle both real users and placeholders
         const splits = selectedMembers.map((memberId) => {
             const isPlaceholder = memberId.startsWith("placeholder:");
             const actualId = isPlaceholder ? memberId.replace("placeholder:", "") : memberId;
+            
+            // For percentage splits, calculate actual amount from percentage
+            const percentage = customSplits[memberId] || 0;
+            const amount = splitType === "percentage" 
+                ? Math.round((totalAmount * percentage / 100) * 100) / 100
+                : percentage; // For equal/exact, customSplits already contains amounts
 
             return {
                 user_id: isPlaceholder ? undefined : actualId,
                 placeholder_id: isPlaceholder ? actualId : undefined,
-                amount: customSplits[memberId] || 0,
-                percentage: splitType === "percentage" ? customSplits[memberId] : undefined,
+                amount,
+                percentage: splitType === "percentage" ? percentage : undefined,
             };
         });
 
-        // Validate splits total
-        const splitsTotal = splits.reduce((sum, s) => sum + s.amount, 0);
-        const totalAmount = Number(data.amount);
-
-        if (Math.abs(splitsTotal - totalAmount) > 0.01) {
-            setError(`Splits total ($${splitsTotal.toFixed(2)}) doesn't match expense amount ($${totalAmount.toFixed(2)})`);
-            setIsLoading(false);
-            return;
+        // Validate splits total (for non-percentage types)
+        if (splitType !== "percentage") {
+            const splitsTotal = splits.reduce((sum, s) => sum + s.amount, 0);
+            if (Math.abs(splitsTotal - totalAmount) > 0.01) {
+                setError(`Splits total ($${splitsTotal.toFixed(2)}) doesn't match expense amount ($${totalAmount.toFixed(2)})`);
+                setIsLoading(false);
+                return;
+            }
         }
 
         try {
@@ -221,7 +239,12 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
 
     const splitsTotal = Object.values(customSplits).reduce((sum, val) => sum + val, 0);
     const amountNum = Number(amount) || 0;
-    const isBalanced = Math.abs(splitsTotal - amountNum) < 0.01;
+    
+    // For percentage splits, check if percentages add to 100
+    // For other splits, check if amounts match total
+    const isBalanced = splitType === "percentage"
+        ? Math.abs(splitsTotal - 100) < 0.01
+        : Math.abs(splitsTotal - amountNum) < 0.01;
 
     return (
         <Card>
@@ -296,9 +319,12 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                             <label className="text-sm font-medium text-gray-700 dark:text-gray-200">
                                 Split Between
                             </label>
-                            {amountNum > 0 && (
+                            {(amountNum > 0 || splitType === "percentage") && (
                                 <span className={`text-sm ${isBalanced ? "text-green-600" : "text-red-600"}`}>
-                                    ${splitsTotal.toFixed(2)} / ${amountNum.toFixed(2)}
+                                    {splitType === "percentage" 
+                                        ? `${splitsTotal.toFixed(1)}% / 100%`
+                                        : `$${splitsTotal.toFixed(2)} / $${amountNum.toFixed(2)}`
+                                    }
                                 </span>
                             )}
                         </div>
@@ -345,16 +371,29 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                                             </span>
                                         </div>
                                         {selectedMembers.includes(memberId) && splitType !== "equal" && (
-                                            <div className="w-28">
-                                                <Input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
-                                                    placeholder="0.00"
-                                                    value={customSplits[memberId] || ""}
-                                                    onChange={(e) => handleSplitChange(memberId, e.target.value)}
-                                                    className="h-9 text-sm"
-                                                />
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative w-24">
+                                                    <Input
+                                                        type="number"
+                                                        step={splitType === "percentage" ? "1" : "0.01"}
+                                                        min="0"
+                                                        max={splitType === "percentage" ? "100" : undefined}
+                                                        placeholder={splitType === "percentage" ? "0" : "0.00"}
+                                                        value={customSplits[memberId] || ""}
+                                                        onChange={(e) => handleSplitChange(memberId, e.target.value)}
+                                                        className="h-9 text-sm pr-6"
+                                                    />
+                                                    {splitType === "percentage" && (
+                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                                                            %
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {splitType === "percentage" && amountNum > 0 && (
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-16">
+                                                        = ${((amountNum * (customSplits[memberId] || 0)) / 100).toFixed(2)}
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                         {selectedMembers.includes(memberId) && splitType === "equal" && (
