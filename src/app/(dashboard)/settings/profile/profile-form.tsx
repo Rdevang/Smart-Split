@@ -17,6 +17,7 @@ import {
     CardDescription,
     CameraCapture,
 } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
 import { profileService } from "@/services/profile";
 
 const profileSchema = z.object({
@@ -40,16 +41,13 @@ interface ProfileFormProps {
 
 export function ProfileForm({ user }: ProfileFormProps) {
     const router = useRouter();
+    const toast = useToast();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
     const [isDeletingAvatar, setIsDeletingAvatar] = useState(false);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatar_url);
-    const [message, setMessage] = useState<{
-        type: "success" | "error";
-        text: string;
-    } | null>(null);
 
     const {
         register,
@@ -66,7 +64,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
     const onSubmit = async (data: ProfileFormData) => {
         setIsLoading(true);
-        setMessage(null);
 
         try {
             const result = await profileService.updateProfile(user.id, {
@@ -79,13 +76,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 throw new Error(result.error);
             }
 
-            setMessage({ type: "success", text: "Profile updated successfully!" });
+            toast.success("Profile updated successfully!");
             router.refresh();
         } catch (error) {
-            setMessage({
-                type: "error",
-                text: error instanceof Error ? error.message : "Failed to update profile",
-            });
+            toast.error(error instanceof Error ? error.message : "Failed to update profile");
         } finally {
             setIsLoading(false);
         }
@@ -96,7 +90,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
         if (!file) return;
 
         setIsUploadingAvatar(true);
-        setMessage(null);
 
         try {
             const result = await profileService.uploadAvatar(user.id, file);
@@ -107,14 +100,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
             if (result.url) {
                 setAvatarUrl(result.url);
-                setMessage({ type: "success", text: "Profile picture updated!" });
+                toast.success("Profile picture updated!");
                 router.refresh();
             }
         } catch (error) {
-            setMessage({
-                type: "error",
-                text: error instanceof Error ? error.message : "Failed to upload image",
-            });
+            toast.error(error instanceof Error ? error.message : "Failed to upload image");
         } finally {
             setIsUploadingAvatar(false);
             // Reset file input
@@ -128,7 +118,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
         if (!avatarUrl) return;
 
         setIsDeletingAvatar(true);
-        setMessage(null);
 
         try {
             const result = await profileService.deleteAvatar(user.id);
@@ -138,13 +127,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
             }
 
             setAvatarUrl(null);
-            setMessage({ type: "success", text: "Profile picture removed!" });
+            toast.success("Profile picture removed!");
             router.refresh();
         } catch (error) {
-            setMessage({
-                type: "error",
-                text: error instanceof Error ? error.message : "Failed to delete image",
-            });
+            toast.error(error instanceof Error ? error.message : "Failed to delete image");
         } finally {
             setIsDeletingAvatar(false);
         }
@@ -152,7 +138,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
     const handleCameraCapture = async (file: File) => {
         setIsUploadingAvatar(true);
-        setMessage(null);
 
         try {
             const result = await profileService.uploadAvatar(user.id, file);
@@ -163,14 +148,11 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
             if (result.url) {
                 setAvatarUrl(result.url);
-                setMessage({ type: "success", text: "Profile picture updated!" });
+                toast.success("Profile picture updated!");
                 router.refresh();
             }
         } catch (error) {
-            setMessage({
-                type: "error",
-                text: error instanceof Error ? error.message : "Failed to upload image",
-            });
+            toast.error(error instanceof Error ? error.message : "Failed to upload image");
         } finally {
             setIsUploadingAvatar(false);
         }
@@ -198,18 +180,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
     return (
         <div className="space-y-6">
-            {/* Global message */}
-            {message && (
-                <div
-                    className={`rounded-lg p-4 text-sm ${message.type === "success"
-                        ? "border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400"
-                        : "border border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
-                        }`}
-                >
-                    {message.text}
-                </div>
-            )}
-
             {/* Avatar section */}
             <Card>
                 <CardHeader>

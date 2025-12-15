@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, User, UserRoundPlus, Users, X } from "lucide-react";
+import { UserPlus, User, UserRoundPlus, Users } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 import { friendsService, type PastMember } from "@/services/friends";
 
@@ -21,14 +22,13 @@ type MemberType = "friends" | "existing" | "placeholder";
 
 export function AddMemberForm({ groupId, userId, existingMemberIds = [], existingMemberNames = [] }: AddMemberFormProps) {
     const router = useRouter();
+    const toast = useToast();
     const [memberType, setMemberType] = useState<MemberType>("friends");
     const [email, setEmail] = useState("");
     const [name, setName] = useState("");
     const [placeholderEmail, setPlaceholderEmail] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
-    const [inviteSent, setInviteSent] = useState(false);
 
     // Friends from past trips
     const [friends, setFriends] = useState<PastMember[]>([]);
@@ -77,8 +77,9 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
         }
 
         if (!result.success) {
-            setError(result.error || "Failed to add member");
+            toast.error(result.error || "Failed to add member");
         } else {
+            toast.success(`${friend.name} added to group!`);
             // Remove from available friends list
             setFriends((prev) => prev.filter((f) => f.id !== friend.id));
             router.refresh();
@@ -91,8 +92,6 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
         e.preventDefault();
         setIsLoading(true);
         setError(null);
-        setSuccess(false);
-        setInviteSent(false);
 
         let result: { success: boolean; error?: string; inviteSent?: boolean };
 
@@ -119,10 +118,12 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
 
         if (!result.success) {
             setError(result.error || "Failed to add member");
+            toast.error(result.error || "Failed to add member");
         } else {
-            setSuccess(true);
             if (result.inviteSent) {
-                setInviteSent(true);
+                toast.success("Invitation sent! They will be notified.");
+            } else {
+                toast.success("Member added successfully!");
             }
             setEmail("");
             setName("");
@@ -142,7 +143,6 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
                     onClick={() => {
                         setMemberType("friends");
                         setError(null);
-                        setSuccess(false);
                     }}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${memberType === "friends"
                         ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
@@ -157,7 +157,6 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
                     onClick={() => {
                         setMemberType("existing");
                         setError(null);
-                        setSuccess(false);
                     }}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${memberType === "existing"
                         ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
@@ -172,7 +171,6 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
                     onClick={() => {
                         setMemberType("placeholder");
                         setError(null);
-                        setSuccess(false);
                     }}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${memberType === "placeholder"
                         ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400"
@@ -301,19 +299,9 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
                 </form>
             )}
 
-            {/* Error message */}
+            {/* Error message for friends tab (forms have inline errors) */}
             {error && memberType === "friends" && (
                 <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-            )}
-
-            {/* Success message */}
-            {success && (
-                <p className="text-xs text-green-600 dark:text-green-400">
-                    {inviteSent
-                        ? "Invitation sent! They will be notified."
-                        : "Member added successfully!"
-                    }
-                </p>
             )}
         </div>
     );

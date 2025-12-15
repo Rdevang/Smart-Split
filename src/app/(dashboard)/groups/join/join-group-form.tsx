@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { QRScanner } from "@/components/ui/qr-scanner";
+import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 
 interface JoinGroupFormProps {
@@ -28,6 +29,7 @@ interface GroupPreview {
 
 export function JoinGroupForm({ initialCode, userId }: JoinGroupFormProps) {
     const router = useRouter();
+    const toast = useToast();
     const [code, setCode] = useState(initialCode);
     const [state, setState] = useState<JoinState>(initialCode ? "validating" : "idle");
     const [error, setError] = useState<string | null>(null);
@@ -90,12 +92,14 @@ export function JoinGroupForm({ initialCode, userId }: JoinGroupFormProps) {
 
             if (!result.success) {
                 setError(result.error || "Failed to join group");
+                toast.error(result.error || "Failed to join group");
                 setState("error");
                 return;
             }
 
             setJoinedGroupId(result.groupId || null);
             setState("success");
+            toast.success(`Welcome to ${groupPreview.name}!`);
 
             // Redirect after a short delay
             setTimeout(() => {
@@ -103,6 +107,7 @@ export function JoinGroupForm({ initialCode, userId }: JoinGroupFormProps) {
             }, 2000);
         } catch {
             setError("Failed to join group");
+            toast.error("Failed to join group");
             setState("error");
         }
     };

@@ -10,12 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 
 const groupSchema = z.object({
     name: z.string().min(1, "Group name is required").max(100, "Name too long"),
     description: z.string().max(500, "Description too long").optional(),
     category: z.string().optional(),
+    currency: z.string().min(1, "Currency is required"),
     simplify_debts: z.boolean().optional(),
 });
 
@@ -28,6 +30,7 @@ interface GroupFormProps {
         name: string;
         description?: string | null;
         category?: string | null;
+        currency?: string | null;
         simplify_debts?: boolean | null;
     };
     mode?: "create" | "edit";
@@ -40,8 +43,20 @@ const categoryOptions = [
     { value: "other", label: "📋 Other" },
 ];
 
+const currencyOptions = [
+    { value: "USD", label: "🇺🇸 USD - US Dollar ($)" },
+    { value: "EUR", label: "🇪🇺 EUR - Euro (€)" },
+    { value: "GBP", label: "🇬🇧 GBP - British Pound (£)" },
+    { value: "INR", label: "🇮🇳 INR - Indian Rupee (₹)" },
+    { value: "CAD", label: "🇨🇦 CAD - Canadian Dollar (C$)" },
+    { value: "AUD", label: "🇦🇺 AUD - Australian Dollar (A$)" },
+    { value: "JPY", label: "🇯🇵 JPY - Japanese Yen (¥)" },
+    { value: "CNY", label: "🇨🇳 CNY - Chinese Yuan (¥)" },
+];
+
 export function GroupForm({ userId, initialData, mode = "create" }: GroupFormProps) {
     const router = useRouter();
+    const toast = useToast();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -57,11 +72,13 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
             name: initialData?.name || "",
             description: initialData?.description || "",
             category: initialData?.category || "other",
+            currency: initialData?.currency || "USD",
             simplify_debts: initialData?.simplify_debts ?? true,
         },
     });
 
     const currentCategory = watch("category");
+    const currentCurrency = watch("currency");
 
     const onSubmit = async (data: GroupFormData) => {
         setIsLoading(true);
@@ -73,33 +90,40 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
                     name: data.name,
                     description: data.description,
                     category: data.category,
+                    currency: data.currency,
                     simplify_debts: data.simplify_debts,
                 });
 
                 if (result.error) {
                     setError(result.error);
+                    toast.error(result.error);
                     return;
                 }
 
+                toast.success(`Group "${data.name}" created!`);
                 router.push(`/groups/${result.group?.id}`);
             } else if (initialData?.id) {
                 const result = await groupsService.updateGroup(initialData.id, {
                     name: data.name,
                     description: data.description,
                     category: data.category,
+                    currency: data.currency,
                     simplify_debts: data.simplify_debts,
                 });
 
                 if (!result.success) {
                     setError(result.error || "Failed to update group");
+                    toast.error(result.error || "Failed to update group");
                     return;
                 }
 
+                toast.success("Group updated successfully!");
                 router.push(`/groups/${initialData.id}`);
                 router.refresh();
             }
-        } catch (err) {
+        } catch {
             setError("An unexpected error occurred");
+            toast.error("An unexpected error occurred");
         } finally {
             setIsLoading(false);
         }
@@ -137,13 +161,23 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
                         {...register("description")}
                     />
 
-                    <Select
-                        label="Category"
-                        options={categoryOptions}
-                        value={currentCategory}
-                        onChange={(value) => setValue("category", value)}
-                        error={errors.category?.message}
-                    />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <Select
+                            label="Category"
+                            options={categoryOptions}
+                            value={currentCategory}
+                            onChange={(value) => setValue("category", value)}
+                            error={errors.category?.message}
+                        />
+
+                        <Select
+                            label="Currency"
+                            options={currencyOptions}
+                            value={currentCurrency}
+                            onChange={(value) => setValue("currency", value)}
+                            error={errors.currency?.message}
+                        />
+                    </div>
 
                     <div className="flex items-center gap-3">
                         <input
@@ -175,4 +209,3 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
         </Card>
     );
 }
-

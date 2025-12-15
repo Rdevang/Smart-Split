@@ -8,10 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { AddMemberForm } from "@/components/features/groups/add-member-form";
-import { SimplifiedDebts } from "@/components/features/groups/simplified-debts";
+import { SimplifiedDebtsClient } from "@/components/features/groups/simplified-debts-client";
 import { ShareGroupButton } from "@/components/features/groups/share-group-button";
+import { SettlementHistory } from "@/components/features/groups/settlement-history";
+import { PendingSettlements } from "@/components/features/groups/pending-settlements";
 import { groupsServerService } from "@/services/groups.server";
 import { expensesServerService } from "@/services/expenses.server";
+import { formatCurrency } from "@/lib/currency";
 
 interface GroupPageProps {
     params: Promise<{ id: string }>;
@@ -26,10 +29,11 @@ export default async function GroupPage({ params }: GroupPageProps) {
         redirect("/login");
     }
 
-    const [group, expensesResult, balances] = await Promise.all([
+    const [group, expensesResult, balances, settlements] = await Promise.all([
         groupsServerService.getGroup(id),
         expensesServerService.getExpenses(id),
         groupsServerService.getGroupBalances(id),
+        groupsServerService.getSettlementsWithNames(id),
     ]);
 
     if (!group) {
@@ -40,6 +44,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
     const isAdmin = await groupsServerService.isUserAdmin(id, user.id);
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     const userBalance = balances.find((b) => b.user_id === user.id)?.balance || 0;
+    const currency = group.currency || "USD";
 
     return (
         <div className="space-y-8">
@@ -105,7 +110,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         <div>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Total Expenses</p>
                             <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                                ${totalExpenses.toFixed(2)}
+                                {formatCurrency(totalExpenses, currency)}
                             </p>
                         </div>
                     </CardContent>
@@ -129,7 +134,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                 ? "text-green-600 dark:text-green-400"
                                 : "text-red-600 dark:text-red-400"
                                 }`}>
-                                {userBalance >= 0 ? "+" : ""}{userBalance.toFixed(2)}
+                                {userBalance >= 0 ? "+" : ""}{formatCurrency(Math.abs(userBalance), currency)}
                             </p>
                         </div>
                     </CardContent>
@@ -182,6 +187,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                     key={expense.id}
                                     expense={expense}
                                     currentUserId={user.id}
+                                    currency={currency}
                                 />
                             ))}
                         </div>
@@ -247,7 +253,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                             ? "text-green-600 dark:text-green-400"
                                             : "text-red-600 dark:text-red-400"
                                             }`}>
-                                            {memberBalance >= 0 ? "+" : ""}{memberBalance.toFixed(2)}
+                                            {memberBalance >= 0 ? "+" : ""}{formatCurrency(Math.abs(memberBalance), currency)}
                                         </span>
                                     </div>
                                 );
@@ -276,12 +282,24 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         </CardContent>
                     </Card>
 
+                    {/* Pending Settlement Approvals */}
+                    <PendingSettlements userId={user.id} />
+
                     {/* Simplified Debts */}
-                    <SimplifiedDebts
+                    <SimplifiedDebtsClient
                         groupId={id}
                         balances={balances}
                         expenses={expenses}
                         currentUserId={user.id}
+                        currency={currency}
+                    />
+
+                    {/* Settlement History */}
+                    <SettlementHistory
+                        groupId={id}
+                        currentUserId={user.id}
+                        initialSettlements={settlements}
+                        currency={currency}
                     />
                 </div>
             </div>

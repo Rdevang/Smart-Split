@@ -50,4 +50,32 @@ describe("ExpenseCard", () => {
         render(<ExpenseCard expense={expense} currentUserId="user-1" />);
         expect(document.querySelector(".bg-orange-100")).toBeInTheDocument();
     });
+
+    describe("currency support", () => {
+        it("displays amounts in specified currency (EUR)", () => {
+            render(<ExpenseCard expense={expense} currentUserId="user-1" currency="EUR" />);
+            // EUR format should include € symbol
+            const amountElements = screen.getAllByText(/€|100/);
+            expect(amountElements.length).toBeGreaterThan(0);
+        });
+
+        it("displays amounts in specified currency (INR)", () => {
+            render(<ExpenseCard expense={expense} currentUserId="user-1" currency="INR" />);
+            // INR format should include ₹ symbol
+            const amountElements = screen.getAllByText(/₹|100/);
+            expect(amountElements.length).toBeGreaterThan(0);
+        });
+
+        it("displays amounts in specified currency (GBP)", () => {
+            render(<ExpenseCard expense={expense} currentUserId="user-1" currency="GBP" />);
+            // GBP format should include £ symbol
+            const amountElements = screen.getAllByText(/£|100/);
+            expect(amountElements.length).toBeGreaterThan(0);
+        });
+
+        it("defaults to USD when no currency specified", () => {
+            render(<ExpenseCard expense={expense} currentUserId="user-1" />);
+            expect(screen.getByText("$100.00")).toBeInTheDocument();
+        });
+    });
 });

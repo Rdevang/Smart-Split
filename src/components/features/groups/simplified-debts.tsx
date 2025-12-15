@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simplify-debts";
 import { groupsService } from "@/services/groups";
+import { formatCurrency } from "@/lib/currency";
 
 interface ExpenseSplit {
     user_id: string | null;
@@ -31,6 +32,7 @@ interface SimplifiedDebtsProps {
     balances: Balance[];
     expenses: Expense[];
     currentUserId: string;
+    currency?: string;
     onSettle?: () => void;
 }
 
@@ -100,7 +102,7 @@ function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): Simp
         if (reverseDebt) {
             // Net out the debts
             const netAmount = Math.round((debt.amount - reverseDebt.amount) * 100) / 100;
-            
+
             if (netAmount > 0.01) {
                 // Original direction wins
                 nettedDebts.push({ ...debt, amount: netAmount });
@@ -121,7 +123,7 @@ function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): Simp
     return nettedDebts;
 }
 
-export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, onSettle }: SimplifiedDebtsProps) {
+export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, currency = "USD", onSettle }: SimplifiedDebtsProps) {
     const [settlingPayment, setSettlingPayment] = useState<string | null>(null);
     const [settledPayments, setSettledPayments] = useState<Set<string>>(new Set());
     const [isSimplified, setIsSimplified] = useState(true);
@@ -155,18 +157,27 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, on
         setSettlingPayment(paymentKey);
 
         try {
-            // Record the settlement
+            // Record the settlement with placeholder flags
             const result = await groupsService.recordSettlement(
                 groupId,
                 payment.from_user_id,
                 payment.to_user_id,
                 payment.amount,
-                currentUserId
+                currentUserId,
+                payment.from_is_placeholder || false,
+                payment.to_is_placeholder || false
             );
 
             if (result.success) {
                 setSettledPayments((prev) => new Set([...prev, paymentKey]));
-                success(`Settlement of $${payment.amount.toFixed(2)} recorded!`, "Payment Settled");
+                if (result.pending) {
+                    success(
+                        `Settlement request of ${formatCurrency(payment.amount, currency)} sent to ${payment.to_user_name} for approval`,
+                        "Awaiting Approval"
+                    );
+                } else {
+                    success(`Settlement of ${formatCurrency(payment.amount, currency)} recorded!`, "Payment Settled");
+                }
                 onSettle?.();
             } else {
                 showError(result.error || "Failed to record settlement");
@@ -261,11 +272,11 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, on
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="text-sm font-bold text-gray-900 dark:text-white">
-                                            ${payment.amount.toFixed(2)}
+                                            {formatCurrency(payment.amount, currency)}
                                         </span>
                                         {isSettled ? (
                                             <Badge variant="success">Settled</Badge>
-                                        ) : youOwe && !payment.to_is_placeholder ? (
+                                        ) : youOwe ? (
                                             <Button
                                                 size="sm"
                                                 variant="primary"
@@ -274,7 +285,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, on
                                             >
                                                 Settle
                                             </Button>
-                                        ) : !youOwe && !payment.from_is_placeholder ? (
+                                        ) : (
                                             <Button
                                                 size="sm"
                                                 variant="outline"
@@ -283,7 +294,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, on
                                             >
                                                 Mark Paid
                                             </Button>
-                                        ) : null}
+                                        )}
                                     </div>
                                 </div>
                             );
@@ -321,7 +332,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, on
                                         </div>
                                     </div>
                                     <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                        ${payment.amount.toFixed(2)}
+                                        {formatCurrency(payment.amount, currency)}
                                     </span>
                                 </div>
                             );

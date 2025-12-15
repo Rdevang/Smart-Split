@@ -2,18 +2,19 @@
 
 import { useState, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { 
-    Copy, 
-    Check, 
-    Download, 
-    Share2, 
-    RefreshCw, 
+import {
+    Copy,
+    Check,
+    Download,
+    Share2,
+    RefreshCw,
     QrCode,
-    Link as LinkIcon 
+    Link as LinkIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 
 interface GroupQRCodeProps {
@@ -24,33 +25,36 @@ interface GroupQRCodeProps {
 }
 
 export function GroupQRCode({ groupId, groupName, inviteCode, isAdmin }: GroupQRCodeProps) {
+    const toast = useToast();
     const [code, setCode] = useState(inviteCode);
     const [copied, setCopied] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
     const [isRegenerating, setIsRegenerating] = useState(false);
     const qrRef = useRef<HTMLDivElement>(null);
 
-    const siteUrl = typeof window !== "undefined" 
-        ? window.location.origin 
+    const siteUrl = typeof window !== "undefined"
+        ? window.location.origin
         : process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-    
+
     const joinUrl = `${siteUrl}/groups/join?code=${code}`;
 
     const copyCode = async () => {
         await navigator.clipboard.writeText(code);
         setCopied(true);
+        toast.success("Invite code copied!");
         setTimeout(() => setCopied(false), 2000);
     };
 
     const copyLink = async () => {
         await navigator.clipboard.writeText(joinUrl);
         setCopiedLink(true);
+        toast.success("Invite link copied!");
         setTimeout(() => setCopiedLink(false), 2000);
     };
 
     const downloadQRCode = () => {
         if (!qrRef.current) return;
-        
+
         const svg = qrRef.current.querySelector("svg");
         if (!svg) return;
 
@@ -58,7 +62,7 @@ export function GroupQRCode({ groupId, groupName, inviteCode, isAdmin }: GroupQR
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         const img = new Image();
-        
+
         img.onload = () => {
             canvas.width = img.width * 2;
             canvas.height = img.height * 2;
@@ -67,14 +71,14 @@ export function GroupQRCode({ groupId, groupName, inviteCode, isAdmin }: GroupQR
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
             }
-            
+
             const pngUrl = canvas.toDataURL("image/png");
             const downloadLink = document.createElement("a");
             downloadLink.href = pngUrl;
             downloadLink.download = `${groupName.replace(/\s+/g, "-")}-invite-qr.png`;
             downloadLink.click();
         };
-        
+
         img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
     };
 
@@ -97,12 +101,15 @@ export function GroupQRCode({ groupId, groupName, inviteCode, isAdmin }: GroupQR
 
     const regenerateCode = async () => {
         if (!isAdmin) return;
-        
+
         setIsRegenerating(true);
         try {
             const result = await groupsService.regenerateInviteCode(groupId);
             if (result.success && result.inviteCode) {
                 setCode(result.inviteCode);
+                toast.success("New invite code generated!");
+            } else {
+                toast.error(result.error || "Failed to regenerate code");
             }
         } finally {
             setIsRegenerating(false);
@@ -120,7 +127,7 @@ export function GroupQRCode({ groupId, groupName, inviteCode, isAdmin }: GroupQR
             <CardContent className="space-y-6">
                 {/* QR Code Display */}
                 <div className="flex justify-center">
-                    <div 
+                    <div
                         ref={qrRef}
                         className="rounded-2xl bg-white p-4 shadow-inner"
                     >
@@ -228,7 +235,7 @@ export function GroupQRCode({ groupId, groupName, inviteCode, isAdmin }: GroupQR
                 {/* Instructions */}
                 <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/50">
                     <p className="text-xs text-gray-600 dark:text-gray-400">
-                        <strong>How to join:</strong> Members can scan this QR code with their phone camera, 
+                        <strong>How to join:</strong> Members can scan this QR code with their phone camera,
                         or enter the invite code manually at{" "}
                         <span className="font-mono text-teal-600 dark:text-teal-400">
                             {siteUrl}/groups/join

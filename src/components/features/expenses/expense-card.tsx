@@ -9,6 +9,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/currency";
 import type { Database } from "@/types/database";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
@@ -59,6 +60,7 @@ interface ExpenseCardExpense {
 interface ExpenseCardProps {
     expense: ExpenseCardExpense;
     currentUserId: string;
+    currency?: string;
     onDelete?: (expenseId: string) => void;
 }
 
@@ -115,11 +117,11 @@ function getSplitDisplayInfo(split: Split, currentUserId: string) {
     return { name, avatarUrl, isPlaceholder, isCurrentUser };
 }
 
-export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardProps) {
+export function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete }: ExpenseCardProps) {
     const [showActions, setShowActions] = useState(false);
     const category = expense.category || "other";
     const paidByUser = expense.paid_by === currentUserId;
-    
+
     // Get payer name - could be current user, registered user, or placeholder
     const getPayerName = () => {
         if (paidByUser) return "you";
@@ -164,16 +166,16 @@ export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardPro
                             </div>
                             <div className="text-right">
                                 <p className="font-semibold text-gray-900 dark:text-white">
-                                    ${expense.amount.toFixed(2)}
+                                    {formatCurrency(expense.amount, currency)}
                                 </p>
                                 {userOwes > 0 && (
                                     <p className="text-sm text-red-600 dark:text-red-400">
-                                        You owe ${userOwes.toFixed(2)}
+                                        You owe {formatCurrency(userOwes, currency)}
                                     </p>
                                 )}
                                 {userIsOwed > 0 && (
                                     <p className="text-sm text-green-600 dark:text-green-400">
-                                        You get back ${userIsOwed.toFixed(2)}
+                                        You get back {formatCurrency(userIsOwed, currency)}
                                     </p>
                                 )}
                             </div>
@@ -209,7 +211,7 @@ export function ExpenseCard({ expense, currentUserId, onDelete }: ExpenseCardPro
                                             {name}
                                         </span>
                                         <span className="font-medium text-gray-900 dark:text-white">
-                                            ${split.amount.toFixed(2)}
+                                            {formatCurrency(split.amount, currency)}
                                         </span>
                                         {isPlaceholder && (
                                             <Badge variant="warning" className="ml-1 text-[10px]">

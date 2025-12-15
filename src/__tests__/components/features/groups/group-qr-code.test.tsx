@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GroupQRCode } from "@/components/features/groups/group-qr-code";
+import { ToastProvider } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 
 // Mock the groups service
@@ -26,6 +27,11 @@ Object.defineProperty(navigator, "clipboard", {
     configurable: true,
 });
 
+// Wrapper with ToastProvider
+const TestWrapper = ({ children }: { children: React.ReactNode }) => (
+    <ToastProvider>{children}</ToastProvider>
+);
+
 describe("GroupQRCode", () => {
     const defaultProps = {
         groupId: "group-123",
@@ -39,25 +45,25 @@ describe("GroupQRCode", () => {
     });
 
     it("renders QR code component", () => {
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         expect(screen.getByTestId("qr-code")).toBeInTheDocument();
     });
 
     it("displays the invite code in input", () => {
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         expect(screen.getByDisplayValue("TESTCODE")).toBeInTheDocument();
     });
 
     it("shows regenerate button for admins", () => {
-        render(<GroupQRCode {...defaultProps} isAdmin={true} />);
+        render(<GroupQRCode {...defaultProps} isAdmin={true} />, { wrapper: TestWrapper });
 
         expect(screen.getByText("Regenerate Invite Code")).toBeInTheDocument();
     });
 
     it("hides regenerate button for non-admins", () => {
-        render(<GroupQRCode {...defaultProps} isAdmin={false} />);
+        render(<GroupQRCode {...defaultProps} isAdmin={false} />, { wrapper: TestWrapper });
 
         expect(screen.queryByText("Regenerate Invite Code")).not.toBeInTheDocument();
     });
@@ -69,7 +75,7 @@ describe("GroupQRCode", () => {
             inviteCode: "NEWCODE1",
         });
 
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         await user.click(screen.getByText("Regenerate Invite Code"));
 
@@ -79,20 +85,20 @@ describe("GroupQRCode", () => {
     });
 
     it("shows download and share buttons", () => {
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         expect(screen.getByText("Download")).toBeInTheDocument();
         expect(screen.getByText("Share")).toBeInTheDocument();
     });
 
     it("shows instructions on how to join", () => {
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         expect(screen.getByText(/Members can scan this QR code/)).toBeInTheDocument();
     });
 
     it("has copy button for invite code", () => {
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         // Find copy button by title attribute
         const copyCodeButton = screen.getByTitle("Copy code");
@@ -100,7 +106,7 @@ describe("GroupQRCode", () => {
     });
 
     it("has copy button for invite link", () => {
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         // Find copy link button by title attribute
         const copyLinkButton = screen.getByTitle("Copy link");
@@ -108,7 +114,7 @@ describe("GroupQRCode", () => {
     });
 
     it("has invite link input field", () => {
-        render(<GroupQRCode {...defaultProps} />);
+        render(<GroupQRCode {...defaultProps} />, { wrapper: TestWrapper });
 
         // The join URL should contain the invite code
         const inputs = screen.getAllByRole("textbox");

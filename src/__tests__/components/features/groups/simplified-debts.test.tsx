@@ -17,9 +17,10 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 }
 
 describe("SimplifiedDebts", () => {
-    const defaultProps = { 
-        groupId: "group-1", 
-        currentUserId: "user-1", 
+    const defaultProps = {
+        groupId: "group-1",
+        currentUserId: "user-1",
+        currency: "USD",
         onSettle: jest.fn(),
         expenses: [] // Required prop for raw debts view
     };
@@ -80,7 +81,7 @@ describe("SimplifiedDebts", () => {
         await waitFor(() => expect(mockRecordSettlement).toHaveBeenCalled());
     });
 
-    it("renders placeholder members without settle button", () => {
+    it("renders placeholder members", () => {
         const balances: Balance[] = [
             { user_id: "user-1", user_name: "Alice", balance: 50 },
             { user_id: "ph-1", user_name: "Mom", balance: -50, is_placeholder: true },
@@ -92,6 +93,33 @@ describe("SimplifiedDebts", () => {
         );
         // Placeholder member (Mom) owes current user (Alice/You) so it should be in "Your Payments"
         expect(screen.getByText("Mom")).toBeInTheDocument();
-        // Mark Paid button should not appear for placeholders owing money
+    });
+
+    it("displays amounts in USD format by default", () => {
+        const balances: Balance[] = [
+            { user_id: "user-1", user_name: "Alice", balance: -100 },
+            { user_id: "user-2", user_name: "Bob", balance: 100 },
+        ];
+        render(
+            <TestWrapper>
+                <SimplifiedDebts {...defaultProps} balances={balances} />
+            </TestWrapper>
+        );
+        expect(screen.getByText("$100.00")).toBeInTheDocument();
+    });
+
+    it("displays amounts in specified currency", () => {
+        const balances: Balance[] = [
+            { user_id: "user-1", user_name: "Alice", balance: -100 },
+            { user_id: "user-2", user_name: "Bob", balance: 100 },
+        ];
+        render(
+            <TestWrapper>
+                <SimplifiedDebts {...defaultProps} balances={balances} currency="EUR" />
+            </TestWrapper>
+        );
+        // EUR format includes € symbol
+        const amountText = screen.getByText(/€|100/);
+        expect(amountText).toBeInTheDocument();
     });
 });

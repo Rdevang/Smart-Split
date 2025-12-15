@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ExpenseForm } from "@/components/features/expenses/expense-form";
+import { ToastProvider } from "@/components/ui/toast";
 import { expensesService } from "@/services/expenses";
 
 // Mock next/navigation
@@ -26,6 +27,11 @@ jest.mock("@/services/expenses", () => ({
 }));
 
 const mockCreateExpense = expensesService.createExpense as jest.MockedFunction<typeof expensesService.createExpense>;
+
+// Wrapper with ToastProvider
+const TestWrapper = ({ children }: { children: React.ReactNode }) => (
+    <ToastProvider>{children}</ToastProvider>
+);
 
 describe("ExpenseForm", () => {
     const mockGroupWithRealUsers = {
@@ -111,7 +117,7 @@ describe("ExpenseForm", () => {
 
     describe("Rendering", () => {
         it("renders form with all required fields", () => {
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             expect(screen.getByRole("heading", { name: "Add Expense" })).toBeInTheDocument();
             expect(screen.getByLabelText(/Description/i)).toBeInTheDocument();
@@ -122,7 +128,7 @@ describe("ExpenseForm", () => {
         });
 
         it("shows all real members in split list", () => {
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             // "You" appears in both dropdown and split list, so use getAllByText
             expect(screen.getAllByText("You").length).toBeGreaterThanOrEqual(1);
@@ -130,7 +136,7 @@ describe("ExpenseForm", () => {
         });
 
         it("shows placeholder members with '(not signed up)' label", () => {
-            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />, { wrapper: TestWrapper });
 
             // Use getAllByText since name may appear in both dropdown and split list
             expect(screen.getAllByText("Mom").length).toBeGreaterThanOrEqual(1);
@@ -139,7 +145,7 @@ describe("ExpenseForm", () => {
         });
 
         it("only shows real users in 'Paid by' dropdown (not placeholders)", () => {
-            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />, { wrapper: TestWrapper });
 
             // The "Paid by" select should only have "You" (the real user)
             // Placeholders can't pay for expenses
@@ -150,7 +156,7 @@ describe("ExpenseForm", () => {
 
     describe("Member selection", () => {
         it("all members are selected by default", () => {
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             const checkboxes = screen.getAllByRole("checkbox");
             checkboxes.forEach((checkbox) => {
@@ -160,7 +166,7 @@ describe("ExpenseForm", () => {
 
         it("can toggle member selection", async () => {
             const user = userEvent.setup();
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             const checkboxes = screen.getAllByRole("checkbox");
             await user.click(checkboxes[0]);
@@ -170,7 +176,7 @@ describe("ExpenseForm", () => {
 
         it("can toggle placeholder member selection", async () => {
             const user = userEvent.setup();
-            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />, { wrapper: TestWrapper });
 
             const checkboxes = screen.getAllByRole("checkbox");
             // Find the checkbox for Mom (should be second in list)
@@ -183,7 +189,7 @@ describe("ExpenseForm", () => {
     describe("Equal split calculation", () => {
         it("calculates equal split when amount is entered", async () => {
             const user = userEvent.setup();
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             await user.type(screen.getByLabelText(/Amount/i), "100");
 
@@ -195,7 +201,7 @@ describe("ExpenseForm", () => {
 
         it("recalculates when member is deselected", async () => {
             const user = userEvent.setup();
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             await user.type(screen.getByLabelText(/Amount/i), "100");
 
@@ -214,7 +220,7 @@ describe("ExpenseForm", () => {
             const user = userEvent.setup();
             mockCreateExpense.mockResolvedValue({ expense: { id: "exp-1" } as never, error: undefined });
 
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             await user.type(screen.getByLabelText(/Description/i), "Dinner");
             await user.type(screen.getByLabelText(/Amount/i), "100");
@@ -240,7 +246,7 @@ describe("ExpenseForm", () => {
             const user = userEvent.setup();
             mockCreateExpense.mockResolvedValue({ expense: { id: "exp-1" } as never, error: undefined });
 
-            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />, { wrapper: TestWrapper });
 
             await user.type(screen.getByLabelText(/Description/i), "Groceries");
             await user.type(screen.getByLabelText(/Amount/i), "90");
@@ -262,7 +268,7 @@ describe("ExpenseForm", () => {
 
         it("shows error when splits don't match total", async () => {
             const user = userEvent.setup();
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             await user.type(screen.getByLabelText(/Description/i), "Test");
             await user.type(screen.getByLabelText(/Amount/i), "100");
@@ -280,21 +286,22 @@ describe("ExpenseForm", () => {
             const user = userEvent.setup();
             mockCreateExpense.mockResolvedValue({ expense: null, error: "Failed to create expense" });
 
-            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithRealUsers} userId="user-1" />, { wrapper: TestWrapper });
 
             await user.type(screen.getByLabelText(/Description/i), "Dinner");
             await user.type(screen.getByLabelText(/Amount/i), "100");
             await user.click(screen.getByRole("button", { name: /Add Expense/i }));
 
+            // Error appears in both inline error div and toast
             await waitFor(() => {
-                expect(screen.getByText("Failed to create expense")).toBeInTheDocument();
+                expect(screen.getAllByText("Failed to create expense").length).toBeGreaterThanOrEqual(1);
             });
         });
     });
 
     describe("Visual differentiation", () => {
         it("shows different avatar style for placeholder members", () => {
-            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />);
+            render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />, { wrapper: TestWrapper });
 
             // Real user should have teal background
             // Placeholder should have gray background

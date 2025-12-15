@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/features/groups/group-card";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
+import { PendingSettlements } from "@/components/features/groups/pending-settlements";
 import { groupsServerService } from "@/services/groups.server";
 import { expensesServerService } from "@/services/expenses.server";
 
@@ -29,22 +30,26 @@ export default async function DashboardPage() {
 
     const groups = groupsResult.data;
 
-    // Calculate summary stats
+    // Calculate summary stats from ALL group balances (not just recent expenses)
+    // Fetch balances for all groups the user is in
+    const balancePromises = groups.map((group) =>
+        groupsServerService.getGroupBalances(group.id)
+    );
+    const allGroupBalances = await Promise.all(balancePromises);
+
     let totalOwed = 0;
     let totalOwe = 0;
 
-    recentExpenses.forEach((expense) => {
-        if (expense.paid_by === user.id) {
-            // User paid, others owe them
-            const othersOwe = expense.splits
-                .filter((s) => s.user_id !== user.id && !s.is_settled)
-                .reduce((sum, s) => sum + s.amount, 0);
-            totalOwed += othersOwe;
-        } else {
-            // Someone else paid, user might owe
-            const userSplit = expense.splits.find((s) => s.user_id === user.id && !s.is_settled);
-            if (userSplit) {
-                totalOwe += userSplit.amount;
+    // Sum up user's balance across all groups
+    allGroupBalances.forEach((balances) => {
+        const userBalance = balances.find((b) => b.user_id === user.id);
+        if (userBalance) {
+            if (userBalance.balance > 0) {
+                // Positive balance means others owe the user
+                totalOwed += userBalance.balance;
+            } else {
+                // Negative balance means user owes others
+                totalOwe += Math.abs(userBalance.balance);
             }
         }
     });
@@ -158,6 +163,9 @@ export default async function DashboardPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Pending Settlement Approvals */}
+            <PendingSettlements userId={user.id} />
 
             <div className="grid gap-8 lg:grid-cols-3">
                 {/* Recent Groups */}

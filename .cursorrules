@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.4.0 | LAST UPDATED: 2024-12-15
+# VERSION: 2.5.0 | LAST UPDATED: 2024-12-16
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -407,6 +407,82 @@ npm run test:coverage # Coverage report
 
 ## LEARNINGS & DECISIONS LOG
 
+### 2024-12-16: Session 8 - Settlement Flow Implementation
+
+#### Settlement Feature:
+- Complete settlement flow for recording payments and marking splits as settled
+- Settlement history component shows past settlements with expand/collapse
+- Page automatically refreshes after settlement to show updated balances
+- Database already accounts for settlements in `get_group_balances` function
+
+#### New Components:
+- `SettlementHistory` - Shows list of past settlements with expand/collapse
+- `SimplifiedDebtsClient` - Client wrapper for SimplifiedDebts that handles page refresh
+
+#### Settlement Flow Architecture:
+1. User clicks "Settle" or "Mark Paid" button in SimplifiedDebts component
+2. `groupsService.recordSettlement()` creates settlement record in database
+3. Related expense_splits are marked as `is_settled = true`
+4. Activity is logged for the settlement
+5. `router.refresh()` triggers server-side revalidation
+6. Page re-fetches balances which now account for the settlement
+
+#### Server Service Pattern for Settlements:
+```tsx
+// Use !fkey syntax for foreign key joins in Supabase
+const { data } = await supabase
+    .from("settlements")
+    .select(`
+        id, from_user, to_user, amount, settled_at, note,
+        from_profile:profiles!settlements_from_user_fkey(id, full_name, email),
+        to_profile:profiles!settlements_to_user_fkey(id, full_name, email)
+    `)
+    .eq("group_id", groupId);
+
+// Type casting for Supabase join results
+type ProfileData = { full_name: string | null; email: string };
+const fromProfile = s.from_profile as unknown as ProfileData | null;
+```
+
+#### Key Learnings:
+- Database function `get_group_balances` already handles settlements in balance calculation
+- Use `as unknown as Type` pattern when Supabase type inference is incorrect for joins
+- Client wrapper components useful for adding client-side behavior (router.refresh) to server-rendered data
+
+---
+
+### 2024-12-16: Session 7 - Toast Notifications Integration
+
+#### Toast Notifications Implementation:
+- Integrated `useToast` hook across all form components for user feedback
+- Components updated: `add-member-form`, `group-form`, `expense-form`, `join-group-form`, `profile-form`, `group-qr-code`
+- Toast shows success messages on successful operations (member added, group created, etc.)
+- Toast shows error messages alongside inline form errors for visibility
+
+#### Testing Pattern for Components with Toast:
+```tsx
+// Components using useToast MUST be wrapped in ToastProvider in tests
+const TestWrapper = ({ children }: { children: React.ReactNode }) => (
+    <ToastProvider>{children}</ToastProvider>
+);
+
+// Use wrapper option in render
+render(<MyComponent />, { wrapper: TestWrapper });
+
+// When error appears in both inline and toast, use getAllByText
+await waitFor(() => {
+    expect(screen.getAllByText("Error message").length).toBeGreaterThanOrEqual(1);
+});
+```
+
+#### Key Learnings:
+- Toast context requires ToastProvider wrapper - components using useToast will throw if not wrapped
+- Error messages may appear in multiple places (inline form error + toast) - use `getAllByText` in tests
+- Removed inline success states (`setSuccess`, `setInviteSent`) in favor of toast notifications
+- Keep inline error displays for form validation (accessibility) but also show toast for visibility
+
+---
+
 ### 2024-12-15: Session 6 - QR Code Invite System & Test Fixes
 
 #### QR Code Group Joining Feature:
@@ -768,6 +844,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Client providers pattern → Wrap children in Providers component in root layout
 - [x] Group sharing → QR code + invite code system with `qrcode.react` and `html5-qrcode`
 - [x] Group joining → Dedicated `/groups/join` page with code entry + QR scanning
+- [x] User feedback → Toast notifications via `ToastProvider` + `useToast` hook
+- [x] Settlement flow → Record payments, mark splits settled, auto-refresh balances
 
 ---
 
@@ -792,6 +870,9 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - QR code invite system - frictionless group joining experience
 - `qrcode.react` for generation - simple SVG output, works well
 - `html5-qrcode` for scanning - works on mobile and desktop
+- Toast notifications - non-intrusive feedback via `useToast` hook
+- Settlement flow - smooth UX with auto-refresh after settlement
+- Settlement history - expandable list with clear visual feedback
 
 ---
 
@@ -801,10 +882,10 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Build Groups CRUD functionality ✅
 - [x] Build Expenses CRUD functionality ✅
 - [x] QR code group invite system ✅
-- [ ] Implement toast notifications for feedback
+- [x] Implement toast notifications for feedback ✅
+- [x] Settlement flow (record payments between users) ✅
 - [ ] Add error boundaries for graceful failures
 - [ ] Add activity feed with real-time updates
-- [ ] Settlement flow (record payments between users)
 - [ ] Delete group/expense confirmation modals
 - [ ] Test QR scanner across different devices/browsers
 
@@ -890,6 +971,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | `src/components/ui/qr-scanner.tsx` | QR code scanner with camera | 2024-12-15 |
 | `src/components/features/groups/group-qr-code.tsx` | Group QR code display | 2024-12-15 |
 | `src/components/features/groups/share-group-button.tsx` | Share dropdown with QR/link | 2024-12-15 |
+| `src/components/features/groups/settlement-history.tsx` | Settlement history with expand/collapse | 2024-12-16 |
+| `src/components/features/groups/simplified-debts-client.tsx` | Client wrapper for debts with refresh | 2024-12-16 |
 | `src/app/(dashboard)/groups/join/` | Join group page and form | 2024-12-15 |
 | `src/app/api/groups/preview/route.ts` | API route for group preview | 2024-12-15 |
 | `supabase/migrations/20241215_add_group_invite_codes.sql` | Invite code migration | 2024-12-15 |
@@ -923,11 +1006,11 @@ docs/
 
 ## NEXT SESSION PRIORITIES
 
-1. Deploy QR code feature to Vercel production
-2. Toast notifications for user feedback (success/error messages)
-3. Settlement flow (record payments, mark splits as settled)
-4. Activity feed with real-time updates
-5. Delete confirmation modals for groups/expenses
-6. Add forgot-password page (currently 404)
-7. GitHub OAuth setup (configure in GitHub Developer settings)
-8. Test QR scanning on mobile devices (iOS/Android)
+1. Activity feed with real-time updates
+2. Delete confirmation modals for groups/expenses
+3. Error boundaries for graceful failure handling
+4. Test QR scanning on mobile devices (iOS/Android)
+5. PWA setup for offline support
+6. Edit/delete expense functionality
+7. Expense receipt image upload
+8. Email notifications for settlements

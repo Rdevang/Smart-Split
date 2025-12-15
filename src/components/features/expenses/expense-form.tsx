@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
 import { expensesService } from "@/services/expenses";
 import type { Database } from "@/types/database";
 
@@ -97,6 +98,7 @@ const getMemberName = (member: GroupMember, currentUserId: string): string => {
 
 export function ExpenseForm({ group, userId }: ExpenseFormProps) {
     const router = useRouter();
+    const toast = useToast();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [splitType, setSplitType] = useState<SplitType>("equal");
@@ -242,13 +244,16 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
 
             if (result.error) {
                 setError(result.error);
+                toast.error(result.error);
                 return;
             }
 
+            toast.success(`Expense "$${totalAmount.toFixed(2)}" added successfully!`);
             router.push(`/groups/${group.id}`);
             router.refresh();
         } catch {
             setError("An unexpected error occurred");
+            toast.error("An unexpected error occurred");
         } finally {
             setIsLoading(false);
         }

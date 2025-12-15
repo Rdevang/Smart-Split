@@ -33,7 +33,7 @@ export default async function GroupSettingsPage({ params }: GroupSettingsPagePro
     }
 
     return (
-        <div className="mx-auto max-w-2xl space-y-6">
+        <div className="space-y-6">
             {/* Back Link */}
             <Link
                 href={`/groups/${id}`}
@@ -43,27 +43,30 @@ export default async function GroupSettingsPage({ params }: GroupSettingsPagePro
                 Back to {group.name}
             </Link>
 
-            {/* QR Code Section */}
-            <GroupQRCode
-                groupId={group.id}
-                groupName={group.name}
-                inviteCode={group.invite_code}
-                isAdmin={isAdmin}
-            />
+            {/* Side by side on large screens */}
+            <div className="grid gap-6 lg:grid-cols-2">
+                {/* QR Code Section */}
+                <GroupQRCode
+                    groupId={group.id}
+                    groupName={group.name}
+                    inviteCode={group.invite_code}
+                    isAdmin={isAdmin}
+                />
 
-            {/* Form */}
-            <GroupForm
-                userId={user.id}
-                mode="edit"
-                initialData={{
-                    id: group.id,
-                    name: group.name,
-                    description: group.description,
-                    category: group.category,
-                    simplify_debts: group.simplify_debts,
-                }}
-            />
+                {/* Form */}
+                <GroupForm
+                    userId={user.id}
+                    mode="edit"
+                    initialData={{
+                        id: group.id,
+                        name: group.name,
+                        description: group.description,
+                        category: group.category,
+                        simplify_debts: group.simplify_debts,
+                        currency: group.currency,
+                    }}
+                />
+            </div>
         </div>
     );
 }
-

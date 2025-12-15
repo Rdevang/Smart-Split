@@ -8,12 +8,14 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export interface GroupWithMembers extends Group {
     members: (GroupMember & { profile: Profile })[];
     member_count: number;
+    currency?: string | null; // From database, may not be in generated types
 }
 
 export interface CreateGroupInput {
     name: string;
     description?: string;
     category?: string;
+    currency?: string;
     simplify_debts?: boolean;
 }
 
@@ -21,6 +23,7 @@ export interface UpdateGroupInput {
     name?: string;
     description?: string;
     category?: string;
+    currency?: string;
     simplify_debts?: boolean;
     image_url?: string;
 }
@@ -118,6 +121,7 @@ export const groupsService = {
                 name: input.name,
                 description: input.description || null,
                 category: input.category || null,
+                currency: input.currency || "USD",
                 simplify_debts: input.simplify_debts ?? true,
                 created_by: userId,
             })
@@ -456,44 +460,91 @@ export const groupsService = {
         fromUserId: string,
         toUserId: string,
         amount: number,
-        recordedBy: string
-    ): Promise<{ success: boolean; error?: string }> {
+        recordedBy: string,
+        fromIsPlaceholder: boolean = false,
+        toIsPlaceholder: boolean = false
+    ): Promise<{ success: boolean; error?: string; pending?: boolean; message?: string }> {
         const supabase = createClient();
+
+        // Determine if approval is needed:
+        // Auto-approve if:
+        // 1. The receiver (to_user) is a placeholder (can't approve)
+        // 2. The receiver IS the person recording it (they clicked "Mark Paid" to confirm they received money)
+        // 3. The payer (from_user) is a placeholder (current user is settling on their behalf)
+        const currentUserIsReceiver = toUserId === recordedBy;
+        const needsApproval = !toIsPlaceholder && !currentUserIsReceiver && !fromIsPlaceholder;
+
+        const settlementData: {
+            group_id: string;
+            amount: number;
+            from_user?: string;
+            from_placeholder_id?: string;
+            to_user?: string;
+            to_placeholder_id?: string;
+            status: string;
+            requested_by: string;
+            settled_at?: string;
+        } = {
+            group_id: groupId,
+            amount,
+            status: needsApproval ? "pending" : "approved",
+            requested_by: recordedBy,
+            ...(needsApproval ? {} : { settled_at: new Date().toISOString() }),
+        };
+
+        if (fromIsPlaceholder) {
+            settlementData.from_placeholder_id = fromUserId;
+        } else {
+            settlementData.from_user = fromUserId;
+        }
+
+        if (toIsPlaceholder) {
+            settlementData.to_placeholder_id = toUserId;
+        } else {
+            settlementData.to_user = toUserId;
+        }
 
         // Create settlement record
         const { error: settlementError } = await supabase
             .from("settlements")
-            .insert({
-                group_id: groupId,
-                from_user: fromUserId,
-                to_user: toUserId,
-                amount,
-            });
+            .insert(settlementData);
 
         if (settlementError) {
             return { success: false, error: settlementError.message };
         }
 
-        // Mark relevant expense splits as settled
-        // Find unsettled splits where from_user owes to_user
-        const { data: expenses } = await supabase
-            .from("expenses")
-            .select("id")
-            .eq("group_id", groupId)
-            .eq("paid_by", toUserId);
+        // For auto-approved settlements (to placeholders), mark splits as settled immediately
+        // For pending settlements (to real users), splits are marked when they approve
+        if (!needsApproval) {
+            // Mark relevant expense splits as settled
+            if (toIsPlaceholder) {
+                // If payee is placeholder, find expenses they paid
+                const { data: expenses } = await supabase
+                    .from("expenses")
+                    .select("id")
+                    .eq("group_id", groupId)
+                    .eq("paid_by_placeholder_id", toUserId);
 
-        if (expenses && expenses.length > 0) {
-            const expenseIds = expenses.map((e) => e.id);
+                if (expenses && expenses.length > 0) {
+                    const expenseIds = expenses.map((e) => e.id);
 
-            await supabase
-                .from("expense_splits")
-                .update({
-                    is_settled: true,
-                    settled_at: new Date().toISOString(),
-                })
-                .in("expense_id", expenseIds)
-                .eq("user_id", fromUserId)
-                .eq("is_settled", false);
+                    if (fromIsPlaceholder) {
+                        await supabase
+                            .from("expense_splits")
+                            .update({ is_settled: true, settled_at: new Date().toISOString() })
+                            .in("expense_id", expenseIds)
+                            .eq("placeholder_id", fromUserId)
+                            .eq("is_settled", false);
+                    } else {
+                        await supabase
+                            .from("expense_splits")
+                            .update({ is_settled: true, settled_at: new Date().toISOString() })
+                            .in("expense_id", expenseIds)
+                            .eq("user_id", fromUserId)
+                            .eq("is_settled", false);
+                    }
+                }
+            }
         }
 
         // Log activity
@@ -501,15 +552,24 @@ export const groupsService = {
             user_id: recordedBy,
             group_id: groupId,
             entity_type: "settlement",
-            action: "created",
+            action: needsApproval ? "requested" : "created",
             metadata: {
                 from_user: fromUserId,
                 to_user: toUserId,
                 amount,
+                from_is_placeholder: fromIsPlaceholder,
+                to_is_placeholder: toIsPlaceholder,
+                status: needsApproval ? "pending" : "approved",
             },
         });
 
-        return { success: true };
+        return {
+            success: true,
+            pending: needsApproval,
+            message: needsApproval
+                ? "Settlement request sent for approval"
+                : "Settlement recorded"
+        };
     },
 
     async getSettlements(groupId: string): Promise<{
@@ -533,6 +593,216 @@ export const groupsService = {
         }
 
         return data || [];
+    },
+
+    async getSettlementsWithNames(groupId: string): Promise<{
+        id: string;
+        from_user: string;
+        from_user_name: string;
+        to_user: string;
+        to_user_name: string;
+        amount: number;
+        settled_at: string;
+        note: string | null;
+        status?: string;
+    }[]> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase
+            .from("settlements")
+            .select(`
+                id,
+                from_user,
+                to_user,
+                from_placeholder_id,
+                to_placeholder_id,
+                amount,
+                settled_at,
+                requested_at,
+                note,
+                status,
+                from_profile:profiles!settlements_from_user_fkey(id, full_name, email),
+                to_profile:profiles!settlements_to_user_fkey(id, full_name, email),
+                from_placeholder:placeholder_members!settlements_from_placeholder_id_fkey(id, name),
+                to_placeholder:placeholder_members!settlements_to_placeholder_id_fkey(id, name)
+            `)
+            .eq("group_id", groupId)
+            .in("status", ["approved", "pending"]) // Show approved and pending
+            .order("settled_at", { ascending: false, nullsFirst: false })
+            .order("requested_at", { ascending: false });
+
+        if (error) {
+            console.error("Error fetching settlements with names:", error);
+            return [];
+        }
+
+        type ProfileData = { full_name: string | null; email: string };
+        type PlaceholderData = { id: string; name: string };
+
+        // Collect IDs that need placeholder lookup (profile join returned null)
+        const placeholderIdsToLookup: string[] = [];
+        (data || []).forEach((s) => {
+            const fromProfile = s.from_profile as unknown as ProfileData | null;
+            const toProfile = s.to_profile as unknown as ProfileData | null;
+            const fromPlaceholder = s.from_placeholder as unknown as PlaceholderData | null;
+            const toPlaceholder = s.to_placeholder as unknown as PlaceholderData | null;
+
+            // If from_user has no profile AND no placeholder, it might be an old record with placeholder ID in from_user
+            if (s.from_user && !fromProfile?.full_name && !fromProfile?.email && !fromPlaceholder?.name) {
+                placeholderIdsToLookup.push(s.from_user);
+            }
+            // Same for to_user
+            if (s.to_user && !toProfile?.full_name && !toProfile?.email && !toPlaceholder?.name) {
+                placeholderIdsToLookup.push(s.to_user);
+            }
+        });
+
+        // Fetch placeholder names for old records that stored placeholder ID in from_user/to_user
+        const placeholderNameMap = new Map<string, string>();
+        if (placeholderIdsToLookup.length > 0) {
+            const { data: placeholders } = await supabase
+                .from("placeholder_members")
+                .select("id, name")
+                .in("id", placeholderIdsToLookup);
+
+            (placeholders || []).forEach((p) => {
+                placeholderNameMap.set(p.id, p.name);
+            });
+        }
+
+        return (data || []).map((s) => {
+            // Handle both real users and placeholders
+            const fromProfile = s.from_profile as unknown as ProfileData | null;
+            const toProfile = s.to_profile as unknown as ProfileData | null;
+            const fromPlaceholder = s.from_placeholder as unknown as PlaceholderData | null;
+            const toPlaceholder = s.to_placeholder as unknown as PlaceholderData | null;
+
+            // Determine names - check placeholder first, then profile, then fallback lookup
+            const fromName = fromPlaceholder?.name
+                || fromProfile?.full_name
+                || fromProfile?.email
+                || placeholderNameMap.get(s.from_user) // Fallback for old records
+                || "Unknown";
+            const toName = toPlaceholder?.name
+                || toProfile?.full_name
+                || toProfile?.email
+                || placeholderNameMap.get(s.to_user) // Fallback for old records
+                || "Unknown";
+
+            // Check if this involves a placeholder (should be auto-approved)
+            const involvesPlaceholder = !!fromPlaceholder?.name
+                || !!toPlaceholder?.name
+                || placeholderNameMap.has(s.from_user)
+                || placeholderNameMap.has(s.to_user)
+                || !!s.from_placeholder_id
+                || !!s.to_placeholder_id;
+
+            // Auto-approve settlements involving placeholders (they can't respond)
+            const effectiveStatus = (s.status === "pending" && involvesPlaceholder)
+                ? "approved"
+                : s.status;
+
+            return {
+                id: s.id,
+                from_user: s.from_user || s.from_placeholder_id || "",
+                from_user_name: fromName,
+                to_user: s.to_user || s.to_placeholder_id || "",
+                to_user_name: toName,
+                amount: s.amount,
+                settled_at: s.settled_at || s.requested_at || new Date().toISOString(),
+                note: s.note,
+                status: effectiveStatus,
+            };
+        });
+    },
+
+    /**
+     * Get pending settlement requests for a user (where they need to approve)
+     */
+    async getPendingSettlements(userId: string): Promise<{
+        id: string;
+        group_id: string;
+        group_name: string;
+        from_user_id: string;
+        from_user_name: string;
+        amount: number;
+        requested_at: string;
+    }[]> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase
+            .from("settlements")
+            .select(`
+                id,
+                group_id,
+                amount,
+                requested_at,
+                from_user,
+                groups!settlements_group_id_fkey(name),
+                from_profile:profiles!settlements_from_user_fkey(id, full_name, email)
+            `)
+            .eq("to_user", userId)
+            .eq("status", "pending")
+            .order("requested_at", { ascending: false });
+
+        if (error) {
+            console.error("Error fetching pending settlements:", error);
+            return [];
+        }
+
+        type ProfileData = { full_name: string | null; email: string };
+        type GroupData = { name: string };
+
+        return (data || []).map((s) => {
+            const fromProfile = s.from_profile as unknown as ProfileData | null;
+            const group = s.groups as unknown as GroupData | null;
+
+            return {
+                id: s.id,
+                group_id: s.group_id || "",
+                group_name: group?.name || "Unknown Group",
+                from_user_id: s.from_user || "",
+                from_user_name: fromProfile?.full_name || fromProfile?.email || "Unknown",
+                amount: s.amount,
+                requested_at: s.requested_at || new Date().toISOString(),
+            };
+        });
+    },
+
+    /**
+     * Approve a pending settlement
+     */
+    async approveSettlement(settlementId: string): Promise<{ success: boolean; error?: string }> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase.rpc("approve_settlement", {
+            settlement_uuid: settlementId,
+        });
+
+        if (error) {
+            console.error("Error approving settlement:", error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: data === true };
+    },
+
+    /**
+     * Reject a pending settlement
+     */
+    async rejectSettlement(settlementId: string): Promise<{ success: boolean; error?: string }> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase.rpc("reject_settlement", {
+            settlement_uuid: settlementId,
+        });
+
+        if (error) {
+            console.error("Error rejecting settlement:", error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: data === true };
     },
 
     async regenerateInviteCode(groupId: string): Promise<{ success: boolean; error?: string; inviteCode?: string }> {
@@ -567,15 +837,15 @@ export const groupsService = {
         }
 
         const result = data as { success: boolean; error?: string; group_id?: string; group_name?: string };
-        
+
         if (!result.success) {
             return { success: false, error: result.error };
         }
 
-        return { 
-            success: true, 
-            groupId: result.group_id, 
-            groupName: result.group_name 
+        return {
+            success: true,
+            groupId: result.group_id,
+            groupName: result.group_name
         };
     },
 
