@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { AddMemberForm } from "@/components/features/groups/add-member-form";
 import { SimplifiedDebts } from "@/components/features/groups/simplified-debts";
+import { ShareGroupButton } from "@/components/features/groups/share-group-button";
 import { groupsServerService } from "@/services/groups.server";
 import { expensesServerService } from "@/services/expenses.server";
 
@@ -79,6 +80,11 @@ export default async function GroupPage({ params }: GroupPageProps) {
                             Add Expense
                         </Button>
                     </Link>
+                    <ShareGroupButton
+                        groupId={id}
+                        groupName={group.name}
+                        inviteCode={group.invite_code}
+                    />
                     {isAdmin && (
                         <Link href={`/groups/${id}/settings`}>
                             <Button variant="outline" size="icon">
@@ -253,8 +259,8 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                     <p className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
                                         Add Member
                                     </p>
-                                    <AddMemberForm 
-                                        groupId={id} 
+                                    <AddMemberForm
+                                        groupId={id}
                                         userId={user.id}
                                         existingMemberIds={group.members
                                             .filter((m) => !m.is_placeholder)

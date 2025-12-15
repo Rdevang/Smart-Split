@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Plus, Users } from "lucide-react";
+import { Plus, Users, QrCode } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/features/groups/group-card";
@@ -27,12 +27,20 @@ export default async function GroupsPage() {
                         Manage your expense sharing groups
                     </p>
                 </div>
-                <Link href="/groups/new">
-                    <Button>
-                        <Plus className="mr-2 h-4 w-4" />
-                        New Group
-                    </Button>
-                </Link>
+                <div className="flex gap-2">
+                    <Link href="/groups/join">
+                        <Button variant="outline">
+                            <QrCode className="mr-2 h-4 w-4" />
+                            Join Group
+                        </Button>
+                    </Link>
+                    <Link href="/groups/new">
+                        <Button>
+                            <Plus className="mr-2 h-4 w-4" />
+                            New Group
+                        </Button>
+                    </Link>
+                </div>
             </div>
 
             {/* Groups List */}
@@ -47,12 +55,20 @@ export default async function GroupsPage() {
                     <p className="mt-2 text-center text-gray-500 dark:text-gray-400">
                         Create your first group to start splitting expenses<br />with friends, roommates, or anyone.
                     </p>
-                    <Link href="/groups/new" className="mt-6">
-                        <Button>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Create Your First Group
-                        </Button>
-                    </Link>
+                    <div className="mt-6 flex gap-3">
+                        <Link href="/groups/join">
+                            <Button variant="outline">
+                                <QrCode className="mr-2 h-4 w-4" />
+                                Join with Code
+                            </Button>
+                        </Link>
+                        <Link href="/groups/new">
+                            <Button>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Create Group
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
             ) : (
                 <div className="grid gap-4">

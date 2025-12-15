@@ -534,5 +534,65 @@ export const groupsService = {
 
         return data || [];
     },
+
+    async regenerateInviteCode(groupId: string): Promise<{ success: boolean; error?: string; inviteCode?: string }> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase.rpc("regenerate_group_invite_code", {
+            group_uuid: groupId,
+        });
+
+        if (error) {
+            console.error("Error regenerating invite code:", error);
+            return { success: false, error: error.message };
+        }
+
+        return { success: true, inviteCode: data };
+    },
+
+    async joinGroupByInviteCode(
+        code: string,
+        userId: string
+    ): Promise<{ success: boolean; error?: string; groupId?: string; groupName?: string }> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase.rpc("join_group_by_invite_code", {
+            code: code.toUpperCase().trim(),
+            joining_user_id: userId,
+        });
+
+        if (error) {
+            console.error("Error joining group:", error);
+            return { success: false, error: error.message };
+        }
+
+        const result = data as { success: boolean; error?: string; group_id?: string; group_name?: string };
+        
+        if (!result.success) {
+            return { success: false, error: result.error };
+        }
+
+        return { 
+            success: true, 
+            groupId: result.group_id, 
+            groupName: result.group_name 
+        };
+    },
+
+    async getGroupByInviteCode(code: string): Promise<{ id: string; name: string } | null> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase
+            .from("groups")
+            .select("id, name")
+            .eq("invite_code", code.toUpperCase().trim())
+            .single();
+
+        if (error || !data) {
+            return null;
+        }
+
+        return data;
+    },
 };
 

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { GroupForm } from "@/components/features/groups/group-form";
+import { GroupQRCode } from "@/components/features/groups/group-qr-code";
 import { groupsServerService } from "@/services/groups.server";
 
 interface GroupSettingsPageProps {
@@ -41,6 +42,14 @@ export default async function GroupSettingsPage({ params }: GroupSettingsPagePro
                 <ArrowLeft className="h-4 w-4" />
                 Back to {group.name}
             </Link>
+
+            {/* QR Code Section */}
+            <GroupQRCode
+                groupId={group.id}
+                groupName={group.name}
+                inviteCode={group.invite_code}
+                isAdmin={isAdmin}
+            />
 
             {/* Form */}
             <GroupForm

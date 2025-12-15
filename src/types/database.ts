@@ -259,6 +259,7 @@ export type Database = {
           description: string | null
           id: string
           image_url: string | null
+          invite_code: string
           name: string
           simplify_debts: boolean | null
           updated_at: string | null
@@ -270,6 +271,7 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          invite_code?: string
           name: string
           simplify_debts?: boolean | null
           updated_at?: string | null
@@ -281,6 +283,7 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          invite_code?: string
           name?: string
           simplify_debts?: boolean | null
           updated_at?: string | null

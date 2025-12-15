@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
     Plus, Users, Receipt, TrendingUp, TrendingDown,
-    ArrowRight
+    ArrowRight, QrCode
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,6 +65,12 @@ export default async function DashboardPage() {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    <Link href="/groups/join">
+                        <Button variant="outline">
+                            <QrCode className="mr-2 h-4 w-4" />
+                            Join Group
+                        </Button>
+                    </Link>
                     <Link href="/groups/new">
                         <Button variant="outline">
                             <Users className="mr-2 h-4 w-4" />
@@ -174,12 +180,20 @@ export default async function DashboardPage() {
                                 <p className="mt-2 text-center text-gray-500 dark:text-gray-400">
                                     Create your first group to start<br />splitting expenses with friends.
                                 </p>
-                                <Link href="/groups/new" className="mt-6">
-                                    <Button>
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        Create Your First Group
-                                    </Button>
-                                </Link>
+                                <div className="mt-6 flex gap-3">
+                                    <Link href="/groups/join">
+                                        <Button variant="outline">
+                                            <QrCode className="mr-2 h-4 w-4" />
+                                            Join with Code
+                                        </Button>
+                                    </Link>
+                                    <Link href="/groups/new">
+                                        <Button>
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Create Group
+                                        </Button>
+                                    </Link>
+                                </div>
                             </CardContent>
                         </Card>
                     ) : (

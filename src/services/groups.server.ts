@@ -276,4 +276,53 @@ export const groupsServerService = {
 
         return count || 0;
     },
+
+    /**
+     * Get group by invite code - for server-side validation
+     */
+    async getGroupByInviteCode(code: string): Promise<{ id: string; name: string; description: string | null; member_count: number } | null> {
+        const supabase = await createClient();
+
+        const { data, error } = await supabase
+            .from("groups")
+            .select(`
+                id, 
+                name, 
+                description,
+                group_members (id)
+            `)
+            .eq("invite_code", code.toUpperCase().trim())
+            .single();
+
+        if (error || !data) {
+            return null;
+        }
+
+        return {
+            id: data.id,
+            name: data.name,
+            description: data.description,
+            member_count: data.group_members?.length || 0,
+        };
+    },
+
+    /**
+     * Check if user is already a member of a group
+     */
+    async isUserInGroup(groupId: string, userId: string): Promise<boolean> {
+        const supabase = await createClient();
+
+        const { data, error } = await supabase
+            .from("group_members")
+            .select("id")
+            .eq("group_id", groupId)
+            .eq("user_id", userId)
+            .single();
+
+        if (error) {
+            return false;
+        }
+
+        return !!data;
+    },
 };
