@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.5.0 | LAST UPDATED: 2024-12-16
+# VERSION: 2.6.0 | LAST UPDATED: 2024-12-16
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -46,6 +46,7 @@
 - **Icons**: lucide-react ONLY
 - **Fonts**: Plus Jakarta Sans (headings), Inter (body) via next/font
 - **Images**: Always use `next/image` with configured domains in `next.config.ts`
+- **Charts**: recharts for data visualization
 
 ### Backend
 - **Database**: Supabase (PostgreSQL)
@@ -81,7 +82,8 @@
   "@testing-library/react": "^16.3.0",
   "@testing-library/jest-dom": "^6.9.1",
   "qrcode.react": "^4.2.0",
-  "html5-qrcode": "^2.3.8"
+  "html5-qrcode": "^2.3.8",
+  "recharts": "^2.x"
 }
 ```
 
@@ -108,6 +110,7 @@ src/
 ├── app/                    # Routes and page components ONLY
 │   ├── (auth)/             # Auth route group (login, register)
 │   ├── (dashboard)/        # Protected dashboard routes
+│   ├── feedback/           # Public feedback page
 │   └── auth/callback/      # OAuth callback handler
 ├── components/    
 │   ├── ui/                 # Base reusable components (Button, Input, Card)
@@ -344,12 +347,18 @@ describe("Component", () => {
 | `settlements` | Payment records |
 | `friendships` | Friend connections |
 | `activities` | Activity feed log |
+| `feedback` | User feedback, bug reports, feature requests |
+| `pending_settlements` | Settlement approval workflow |
+| `placeholder_members` | Non-registered group members |
 
 ### Custom Types
 - `expense_category`: food, transport, entertainment, utilities, rent, shopping, travel, healthcare, groceries, other
 - `split_type`: equal, exact, percentage
 - `member_role`: admin, member
 - `friendship_status`: pending, accepted, blocked
+- `feedback_type`: suggestion, feature_request, bug_report, other
+- `feedback_priority`: low, medium, high, critical
+- `feedback_status`: new, reviewing, planned, in_progress, completed, declined
 
 ### Key Functions
 - `get_group_balances(group_uuid)` - Calculate who owes whom in a group
@@ -406,6 +415,77 @@ npm run test:coverage # Coverage report
 ---
 
 ## LEARNINGS & DECISIONS LOG
+
+### 2024-12-16: Session 9 - Analytics, Charts, Feedback System
+
+#### Analytics Page with Multiple Charts:
+- Created dedicated analytics page at `/groups/[id]/analytics`
+- Implemented 5 different chart types using `recharts`:
+  1. **CategoryChart** (Donut) - Expense breakdown by category
+  2. **TrendChart** (Line) - Spending over time
+  3. **ContributionsChart** (Horizontal Bar) - Who paid what
+  4. **SpendByMemberChart** (Radar) - Each member's share of expenses
+  5. **BalancesChart** (Vertical Bar) - Member balances
+
+#### Recharts Pattern:
+```tsx
+// Define custom tooltip outside component to avoid re-creation
+function CustomTooltip({ active, payload, currency }: TooltipProps) {
+  if (active && payload?.length) {
+    return (
+      <div className="rounded-lg border bg-white p-3 shadow-lg dark:bg-gray-800">
+        <p className="text-sm font-semibold">{formatCurrency(payload[0].value, currency)}</p>
+      </div>
+    );
+  }
+  return null;
+}
+
+// Use ResponsiveContainer for responsive charts
+<ResponsiveContainer width="100%" height="100%">
+  <PieChart>
+    <Pie data={data} dataKey="value" />
+    <Tooltip content={<CustomTooltip currency={currency} />} />
+  </PieChart>
+</ResponsiveContainer>
+```
+
+#### Feedback System (Public):
+- Created `/feedback` page accessible to both registered and unregistered users
+- Feedback types: Suggestion, Feature Request, Bug Report, Other
+- Priority levels for bugs: Low, Medium, High, Critical
+- Auto-captures browser/device info
+- Pre-fills email/name for logged-in users
+- Floating feedback button on all dashboard pages
+
+#### Feedback Components:
+- `FeedbackForm` - Main form with type selection, validation
+- `FeedbackButton` - Floating or inline button variants
+- API route at `/api/feedback` for submissions
+
+#### Currency on Dashboard:
+- Dashboard now fetches user's preferred currency from profile
+- Uses `formatCurrency(amount, currency)` for all balance displays
+- Profile settings saves redirect to dashboard after save
+
+#### Placeholder Member Handling in Charts:
+```tsx
+// Always check both profile and placeholder for names
+const payerName = expense.paid_by_profile?.full_name 
+    || expense.paid_by_placeholder?.name 
+    || "Unknown";
+
+const payerId = expense.paid_by || expense.paid_by_placeholder?.id || "unknown";
+```
+
+#### Key Learnings:
+- Custom Tooltip components must be defined OUTSIDE the main component to avoid re-render issues
+- Use `ResponsiveContainer` wrapper for all recharts components
+- For expenses, always check both `paid_by_profile` AND `paid_by_placeholder` for names
+- Feedback table uses permissive INSERT policy for anonymous submissions
+- Floating buttons use `fixed` positioning with `z-50` for proper stacking
+
+---
 
 ### 2024-12-16: Session 8 - Settlement Flow Implementation
 
@@ -746,6 +826,15 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 
 ## MISTAKES & CORRECTIONS
 
+### 2024-12-16 (Session 9)
+- **Mistake**: Tooltip components defined inside main component caused re-render issues
+- **Correction**: Define custom tooltip components OUTSIDE the main chart component
+- **Prevention**: Always define sub-components outside parent when used in render props
+
+- **Mistake**: "Top Spender" showing "Unknown" instead of name
+- **Correction**: Check both `paid_by_profile?.full_name` AND `paid_by_placeholder?.name`
+- **Prevention**: Expenses can be paid by either registered users or placeholders - always check both
+
 ### 2024-12-15 (Session 6)
 - **Mistake**: Tests using `getByText("Mom")` failed when "Mom" appeared in both dropdown and list
 - **Correction**: Use `getAllByText("Mom")` and check `.length` or use more specific queries
@@ -846,6 +935,9 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Group joining → Dedicated `/groups/join` page with code entry + QR scanning
 - [x] User feedback → Toast notifications via `ToastProvider` + `useToast` hook
 - [x] Settlement flow → Record payments, mark splits settled, auto-refresh balances
+- [x] Analytics/Charts → Dedicated page with recharts (5 chart types)
+- [x] User feedback collection → Public `/feedback` page with floating button
+- [x] Dashboard currency → Uses profile's preferred currency setting
 
 ---
 
@@ -873,6 +965,10 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - Toast notifications - non-intrusive feedback via `useToast` hook
 - Settlement flow - smooth UX with auto-refresh after settlement
 - Settlement history - expandable list with clear visual feedback
+- Recharts library - responsive, customizable, React-native
+- Analytics page - comprehensive expense insights
+- Feedback system - accessible to all users, captures device info
+- Currency formatting - `formatCurrency()` utility with locale support
 
 ---
 
@@ -884,10 +980,13 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] QR code group invite system ✅
 - [x] Implement toast notifications for feedback ✅
 - [x] Settlement flow (record payments between users) ✅
+- [x] Analytics page with charts ✅
+- [x] User feedback collection form ✅
 - [ ] Add error boundaries for graceful failures
 - [ ] Add activity feed with real-time updates
 - [ ] Delete group/expense confirmation modals
 - [ ] Test QR scanner across different devices/browsers
+- [ ] Admin dashboard to view/manage feedback
 
 ---
 
@@ -921,6 +1020,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ❌ Don't use `getByText` when element appears multiple times - use `getAllByText`
 ❌ Don't forget to update tests when component props/signatures change
 ❌ Don't mock browser APIs in `beforeEach` - use `Object.defineProperty` at module level
+❌ Don't define tooltip/sub-components inside chart components - define outside
+❌ Don't assume expense payer is always a registered user - check placeholders too
 
 ---
 
@@ -929,6 +1030,7 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | File | Purpose | Last Modified |
 |------|---------|---------------|
 | `src/lib/utils.ts` | cn() utility function | 2024-12-10 |
+| `src/lib/currency.ts` | formatCurrency() utility | 2024-12-16 |
 | `src/lib/supabase/client.ts` | Browser Supabase client | 2024-12-10 |
 | `src/lib/supabase/server.ts` | Server Supabase client | 2024-12-10 |
 | `src/lib/supabase/middleware.ts` | Session refresh logic | 2024-12-10 |
@@ -949,11 +1051,14 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | `src/app/(dashboard)/loading.tsx` | Dashboard loading skeleton | 2024-12-12 |
 | `src/app/(dashboard)/groups/loading.tsx` | Groups list loading skeleton | 2024-12-12 |
 | `src/app/(dashboard)/groups/[id]/loading.tsx` | Group detail loading skeleton | 2024-12-12 |
+| `src/app/(dashboard)/groups/[id]/analytics/page.tsx` | Group analytics page | 2024-12-16 |
 | `src/app/(dashboard)/expenses/loading.tsx` | Expenses loading skeleton | 2024-12-12 |
 | `src/app/(dashboard)/activity/loading.tsx` | Activity loading skeleton | 2024-12-12 |
 | `src/app/(dashboard)/settings/loading.tsx` | Settings loading skeleton | 2024-12-12 |
 | `src/components/features/groups/` | Group card, form, add-member | 2024-12-11 |
+| `src/components/features/groups/analytics-charts.tsx` | Chart components (5 types) | 2024-12-16 |
 | `src/components/features/expenses/` | Expense card, form | 2024-12-11 |
+| `src/components/features/feedback/` | Feedback form and button | 2024-12-16 |
 | `src/services/profile.ts` | Profile CRUD (client) | 2024-12-10 |
 | `src/services/groups.ts` | Groups CRUD (client) | 2024-12-11 |
 | `src/services/groups.server.ts` | Groups CRUD (server) | 2024-12-11 |
@@ -961,10 +1066,13 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | `src/services/expenses.server.ts` | Expenses CRUD (server) | 2024-12-11 |
 | `src/app/(dashboard)/groups/` | Groups list, create, detail, settings | 2024-12-11 |
 | `src/app/(dashboard)/expenses/` | Expenses list page | 2024-12-11 |
-| `src/app/(dashboard)/layout.tsx` | Protected dashboard layout | 2024-12-10 |
-| `src/app/(dashboard)/settings/profile/` | Profile settings page | 2024-12-10 |
+| `src/app/(dashboard)/layout.tsx` | Protected dashboard layout + feedback button | 2024-12-16 |
+| `src/app/(dashboard)/settings/profile/` | Profile settings page | 2024-12-16 |
+| `src/app/feedback/page.tsx` | Public feedback page | 2024-12-16 |
+| `src/app/api/feedback/route.ts` | Feedback API endpoint | 2024-12-16 |
 | `src/types/database.ts` | Generated Supabase types | 2024-12-10 |
-| `supabase/migrations/` | Database migrations + RLS fixes | 2024-12-15 |
+| `supabase/migrations/` | Database migrations + RLS fixes | 2024-12-16 |
+| `supabase/migrations/20241216_add_feedback_table.sql` | Feedback table migration | 2024-12-16 |
 | `jest.config.ts` | Jest configuration | 2024-12-10 |
 | `jest.setup.ts` | Test setup and mocks | 2024-12-10 |
 | `next.config.ts` | Next.js config with image domains | 2024-12-10 |
@@ -1009,7 +1117,7 @@ docs/
 1. Activity feed with real-time updates
 2. Delete confirmation modals for groups/expenses
 3. Error boundaries for graceful failure handling
-4. Test QR scanning on mobile devices (iOS/Android)
+4. Admin dashboard for feedback management
 5. PWA setup for offline support
 6. Edit/delete expense functionality
 7. Expense receipt image upload

@@ -12,6 +12,7 @@ import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { PendingSettlements } from "@/components/features/groups/pending-settlements";
 import { groupsServerService } from "@/services/groups.server";
 import { expensesServerService } from "@/services/expenses.server";
+import { formatCurrency } from "@/lib/currency";
 
 export default async function DashboardPage() {
     const supabase = await createClient();
@@ -25,7 +26,7 @@ export default async function DashboardPage() {
     const [groupsResult, recentExpenses, profile] = await Promise.all([
         groupsServerService.getGroups(user.id),
         expensesServerService.getRecentExpenses(user.id, 5),
-        supabase.from("profiles").select("full_name").eq("id", user.id).single(),
+        supabase.from("profiles").select("full_name, currency").eq("id", user.id).single(),
     ]);
 
     const groups = groupsResult.data;
@@ -56,6 +57,7 @@ export default async function DashboardPage() {
 
     const netBalance = totalOwed - totalOwe;
     const firstName = profile.data?.full_name?.split(" ")[0] || "there";
+    const currency = profile.data?.currency || "USD";
 
     return (
         <div className="space-y-8">
@@ -106,7 +108,7 @@ export default async function DashboardPage() {
                         <div>
                             <p className="text-sm text-gray-500 dark:text-gray-400">You are owed</p>
                             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                ${totalOwed.toFixed(2)}
+                                {formatCurrency(totalOwed, currency)}
                             </p>
                         </div>
                     </CardContent>
@@ -120,7 +122,7 @@ export default async function DashboardPage() {
                         <div>
                             <p className="text-sm text-gray-500 dark:text-gray-400">You owe</p>
                             <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                                ${totalOwe.toFixed(2)}
+                                {formatCurrency(totalOwe, currency)}
                             </p>
                         </div>
                     </CardContent>
@@ -143,7 +145,7 @@ export default async function DashboardPage() {
                                 ? "text-teal-600 dark:text-teal-400"
                                 : "text-orange-600 dark:text-orange-400"
                                 }`}>
-                                {netBalance >= 0 ? "+" : ""}{netBalance.toFixed(2)}
+                                {netBalance >= 0 ? "+" : ""}{formatCurrency(Math.abs(netBalance), currency).replace(/^-/, "")}
                             </p>
                         </div>
                     </CardContent>

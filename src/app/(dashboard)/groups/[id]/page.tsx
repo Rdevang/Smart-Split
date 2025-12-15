@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, Plus, Settings, Users, Receipt, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, Plus, Settings, Users, Receipt, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,13 +78,21 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         </div>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Link href={`/groups/${id}/expenses/new`}>
                         <Button>
                             <Plus className="mr-2 h-4 w-4" />
                             Add Expense
                         </Button>
                     </Link>
+                    {expenses.length > 0 && (
+                        <Link href={`/groups/${id}/analytics`}>
+                            <Button variant="outline">
+                                <BarChart3 className="mr-2 h-4 w-4" />
+                                Analytics
+                            </Button>
+                        </Link>
+                    )}
                     <ShareGroupButton
                         groupId={id}
                         groupName={group.name}

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Navbar } from "@/components/layout";
+import { FeedbackButton } from "@/components/features/feedback/feedback-button";
 
 export default async function DashboardLayout({
     children,
@@ -35,6 +36,7 @@ export default async function DashboardLayout({
             <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
                 {children}
             </main>
+            <FeedbackButton />
         </div>
     );
 }
