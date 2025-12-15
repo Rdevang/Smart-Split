@@ -55,33 +55,36 @@ export default async function DashboardPage() {
     return (
         <div className="space-y-8">
             {/* Welcome Header */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
                         Welcome back, {firstName}! 👋
                     </h1>
-                    <p className="mt-1 text-gray-500 dark:text-gray-400">
+                    <p className="mt-1 text-sm sm:text-base text-gray-500 dark:text-gray-400">
                         Here&apos;s what&apos;s happening with your expenses
                     </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Link href="/groups/join">
-                        <Button variant="outline">
-                            <QrCode className="mr-2 h-4 w-4" />
-                            Join Group
+                        <Button variant="outline" size="sm" className="text-xs sm:text-sm">
+                            <QrCode className="mr-1.5 h-4 w-4" />
+                            <span className="hidden xs:inline">Join</span>
+                            <span className="xs:hidden">Join</span>
                         </Button>
                     </Link>
                     <Link href="/groups/new">
-                        <Button variant="outline">
-                            <Users className="mr-2 h-4 w-4" />
-                            New Group
+                        <Button variant="outline" size="sm" className="text-xs sm:text-sm">
+                            <Users className="mr-1.5 h-4 w-4" />
+                            <span className="hidden xs:inline">New Group</span>
+                            <span className="xs:hidden">New</span>
                         </Button>
                     </Link>
                     {groups.length > 0 && (
                         <Link href={`/groups/${groups[0].id}/expenses/new`}>
-                            <Button>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add Expense
+                            <Button size="sm" className="text-xs sm:text-sm">
+                                <Plus className="mr-1.5 h-4 w-4" />
+                                <span className="hidden sm:inline">Add Expense</span>
+                                <span className="sm:hidden">Expense</span>
                             </Button>
                         </Link>
                     )}

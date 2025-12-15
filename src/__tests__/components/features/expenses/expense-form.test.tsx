@@ -132,8 +132,9 @@ describe("ExpenseForm", () => {
         it("shows placeholder members with '(not signed up)' label", () => {
             render(<ExpenseForm group={mockGroupWithPlaceholders} userId="user-1" />);
 
-            expect(screen.getByText("Mom")).toBeInTheDocument();
-            expect(screen.getByText("Dad")).toBeInTheDocument();
+            // Use getAllByText since name may appear in both dropdown and split list
+            expect(screen.getAllByText("Mom").length).toBeGreaterThanOrEqual(1);
+            expect(screen.getAllByText("Dad").length).toBeGreaterThanOrEqual(1);
             expect(screen.getAllByText("(not signed up)")).toHaveLength(2);
         });
 

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AddMemberForm } from "@/components/features/groups/add-member-form";
 import { groupsService } from "@/services/groups";
+import { friendsService } from "@/services/friends";
 
 // Mock next/navigation
 jest.mock("next/navigation", () => ({
@@ -10,16 +11,31 @@ jest.mock("next/navigation", () => ({
     }),
 }));
 
+// Mock next/image
+jest.mock("next/image", () => ({
+    __esModule: true,
+    default: (props: { alt: string; src: string }) => <img alt={props.alt} src={props.src} />,
+}));
+
 // Mock groups service
 jest.mock("@/services/groups", () => ({
     groupsService: {
         addMember: jest.fn(),
         addPlaceholderMember: jest.fn(),
+        addFriendToGroup: jest.fn(),
+    },
+}));
+
+// Mock friends service
+jest.mock("@/services/friends", () => ({
+    friendsService: {
+        getPastGroupMembers: jest.fn(),
     },
 }));
 
 const mockAddMember = groupsService.addMember as jest.MockedFunction<typeof groupsService.addMember>;
 const mockAddPlaceholderMember = groupsService.addPlaceholderMember as jest.MockedFunction<typeof groupsService.addPlaceholderMember>;
+const mockGetPastGroupMembers = friendsService.getPastGroupMembers as jest.MockedFunction<typeof friendsService.getPastGroupMembers>;
 
 describe("AddMemberForm", () => {
     const defaultProps = {
@@ -29,14 +45,27 @@ describe("AddMemberForm", () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // Default: return empty friends list
+        mockGetPastGroupMembers.mockResolvedValue([]);
     });
 
     describe("Toggle between modes", () => {
-        it("renders with 'Existing User' mode by default", () => {
+        it("renders with 'From Trips' tab by default", async () => {
             render(<AddMemberForm {...defaultProps} />);
 
-            expect(screen.getByText("Existing User")).toBeInTheDocument();
+            await waitFor(() => {
+                expect(screen.getByText("From Trips")).toBeInTheDocument();
+            });
+            expect(screen.getByText("By Email")).toBeInTheDocument();
             expect(screen.getByText("New Person")).toBeInTheDocument();
+        });
+
+        it("switches to 'By Email' mode when clicked", async () => {
+            const user = userEvent.setup();
+            render(<AddMemberForm {...defaultProps} />);
+
+            await user.click(screen.getByText("By Email"));
+
             expect(screen.getByPlaceholderText("Enter email address")).toBeInTheDocument();
         });
 
@@ -49,25 +78,16 @@ describe("AddMemberForm", () => {
             expect(screen.getByPlaceholderText(/Name/)).toBeInTheDocument();
             expect(screen.getByText(/Add someone who hasn't signed up yet/)).toBeInTheDocument();
         });
-
-        it("switches back to 'Existing User' mode", async () => {
-            const user = userEvent.setup();
-            render(<AddMemberForm {...defaultProps} />);
-
-            await user.click(screen.getByText("New Person"));
-            await user.click(screen.getByText("Existing User"));
-
-            expect(screen.getByPlaceholderText("Enter email address")).toBeInTheDocument();
-        });
     });
 
-    describe("Adding existing user", () => {
+    describe("Adding existing user by email", () => {
         it("calls addMember with email when submitting", async () => {
             const user = userEvent.setup();
-            mockAddMember.mockResolvedValue({ success: true });
+            mockAddMember.mockResolvedValue({ success: true, inviteSent: true });
 
             render(<AddMemberForm {...defaultProps} />);
 
+            await user.click(screen.getByText("By Email"));
             await user.type(screen.getByPlaceholderText("Enter email address"), "john@example.com");
             await user.click(screen.getByRole("button", { name: /Add/i }));
 
@@ -76,17 +96,18 @@ describe("AddMemberForm", () => {
             });
         });
 
-        it("shows success message on successful add", async () => {
+        it("shows success message on successful invite", async () => {
             const user = userEvent.setup();
-            mockAddMember.mockResolvedValue({ success: true });
+            mockAddMember.mockResolvedValue({ success: true, inviteSent: true });
 
             render(<AddMemberForm {...defaultProps} />);
 
+            await user.click(screen.getByText("By Email"));
             await user.type(screen.getByPlaceholderText("Enter email address"), "john@example.com");
             await user.click(screen.getByRole("button", { name: /Add/i }));
 
             await waitFor(() => {
-                expect(screen.getByText("Member added successfully!")).toBeInTheDocument();
+                expect(screen.getByText(/Invitation sent/)).toBeInTheDocument();
             });
         });
 
@@ -96,6 +117,7 @@ describe("AddMemberForm", () => {
 
             render(<AddMemberForm {...defaultProps} />);
 
+            await user.click(screen.getByText("By Email"));
             await user.type(screen.getByPlaceholderText("Enter email address"), "notfound@example.com");
             await user.click(screen.getByRole("button", { name: /Add/i }));
 
@@ -104,8 +126,11 @@ describe("AddMemberForm", () => {
             });
         });
 
-        it("disables Add button when email is empty", () => {
+        it("disables Add button when email is empty", async () => {
+            const user = userEvent.setup();
             render(<AddMemberForm {...defaultProps} />);
+
+            await user.click(screen.getByText("By Email"));
 
             const addButton = screen.getByRole("button", { name: /Add/i });
             expect(addButton).toBeDisabled();
@@ -214,6 +239,7 @@ describe("AddMemberForm", () => {
 
             render(<AddMemberForm {...defaultProps} />);
 
+            await user.click(screen.getByText("By Email"));
             await user.type(screen.getByPlaceholderText("Enter email address"), "test@test.com");
             await user.click(screen.getByRole("button", { name: /Add/i }));
 
@@ -226,5 +252,27 @@ describe("AddMemberForm", () => {
             expect(screen.queryByText("Some error")).not.toBeInTheDocument();
         });
     });
-});
 
+    describe("From Trips tab", () => {
+        it("shows loading state while fetching friends", async () => {
+            // Make the promise hang
+            mockGetPastGroupMembers.mockImplementation(() => new Promise(() => {}));
+
+            render(<AddMemberForm {...defaultProps} />);
+
+            await waitFor(() => {
+                expect(screen.getByText("Loading friends...")).toBeInTheDocument();
+            });
+        });
+
+        it("shows empty state when no friends available", async () => {
+            mockGetPastGroupMembers.mockResolvedValue([]);
+
+            render(<AddMemberForm {...defaultProps} />);
+
+            await waitFor(() => {
+                expect(screen.getByText(/No friends available to add/)).toBeInTheDocument();
+            });
+        });
+    });
+});

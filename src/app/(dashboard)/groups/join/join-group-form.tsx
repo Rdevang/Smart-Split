@@ -213,17 +213,17 @@ export function JoinGroupForm({ initialCode, userId }: JoinGroupFormProps) {
 
     // Default form state with tabs
     return (
-        <Card className="w-full max-w-md">
-            <CardHeader className="text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-900/30 dark:to-teal-800/30">
-                    <QrCode className="h-8 w-8 text-teal-600 dark:text-teal-400" />
+        <Card className="w-full max-w-md mx-auto">
+            <CardHeader className="text-center px-4 sm:px-6">
+                <div className="mx-auto flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-900/30 dark:to-teal-800/30">
+                    <QrCode className="h-7 w-7 sm:h-8 sm:w-8 text-teal-600 dark:text-teal-400" />
                 </div>
-                <CardTitle className="mt-4">Join a Group</CardTitle>
-                <CardDescription>
-                    Scan a QR code or enter the invite code to join
+                <CardTitle className="mt-3 sm:mt-4 text-lg sm:text-xl">Join a Group</CardTitle>
+                <CardDescription className="text-sm">
+                    Scan a QR code or enter the invite code
                 </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 px-4 sm:px-6">
                 {/* Tab Buttons */}
                 <div className="flex rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
                     <button

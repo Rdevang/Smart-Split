@@ -6,6 +6,13 @@ jest.mock("@/lib/supabase/client", () => ({
     createClient: jest.fn(),
 }));
 
+// Mock notifications service
+jest.mock("@/services/notifications", () => ({
+    notificationsService: {
+        sendGroupInvitation: jest.fn().mockResolvedValue({ success: true }),
+    },
+}));
+
 const mockCreateClient = createClient as jest.MockedFunction<typeof createClient>;
 
 describe("groupsService", () => {
@@ -24,42 +31,47 @@ describe("groupsService", () => {
     });
 
     describe("addMember", () => {
-        it("should add an existing user to a group by email", async () => {
+        it("should send invitation to an existing user by email", async () => {
             const mockProfile = { id: "user-123", full_name: "John Doe" };
+            const mockGroup = { name: "Test Group" };
+            const mockInviter = { full_name: "Admin User", email: "admin@test.com" };
+
+            // Create chainable mock
+            const createChainableMock = (data: unknown) => ({
+                select: jest.fn().mockReturnValue({
+                    eq: jest.fn().mockReturnValue({
+                        eq: jest.fn().mockReturnValue({
+                            single: jest.fn().mockResolvedValue({ data, error: null }),
+                        }),
+                        single: jest.fn().mockResolvedValue({ data, error: null }),
+                    }),
+                    single: jest.fn().mockResolvedValue({ data, error: null }),
+                }),
+                insert: jest.fn().mockResolvedValue({ error: null }),
+            });
 
             mockSupabase.from.mockImplementation((table: string) => {
                 if (table === "profiles") {
-                    return {
-                        select: jest.fn().mockReturnValue({
-                            eq: jest.fn().mockReturnValue({
-                                single: jest.fn().mockResolvedValue({ data: mockProfile, error: null }),
-                            }),
-                        }),
-                    };
+                    // First call gets user profile, subsequent calls may get inviter
+                    return createChainableMock(mockProfile);
                 }
                 if (table === "group_members") {
-                    return {
-                        select: jest.fn().mockReturnValue({
-                            eq: jest.fn().mockReturnValue({
-                                eq: jest.fn().mockReturnValue({
-                                    single: jest.fn().mockResolvedValue({ data: null, error: { code: "PGRST116" } }),
-                                }),
-                            }),
-                        }),
-                        insert: jest.fn().mockResolvedValue({ error: null }),
-                    };
+                    return createChainableMock(null); // Not a member yet
+                }
+                if (table === "groups") {
+                    return createChainableMock(mockGroup);
                 }
                 if (table === "activities") {
-                    return {
-                        insert: jest.fn().mockResolvedValue({ error: null }),
-                    };
+                    return createChainableMock(null);
                 }
-                return {};
+                return createChainableMock(null);
             });
 
             const result = await groupsService.addMember("group-123", "john@example.com", "admin-123");
 
+            // Now sends invitation instead of directly adding
             expect(result.success).toBe(true);
+            expect(result.inviteSent).toBe(true);
         });
 
         it("should return error if user not found", async () => {
@@ -81,28 +93,26 @@ describe("groupsService", () => {
             const mockProfile = { id: "user-123", full_name: "John Doe" };
             const mockMember = { id: "member-123" };
 
+            const createChainableMock = (data: unknown, extraData?: unknown) => ({
+                select: jest.fn().mockReturnValue({
+                    eq: jest.fn().mockReturnValue({
+                        eq: jest.fn().mockReturnValue({
+                            single: jest.fn().mockResolvedValue({ data: extraData ?? data, error: null }),
+                        }),
+                        single: jest.fn().mockResolvedValue({ data, error: null }),
+                    }),
+                    single: jest.fn().mockResolvedValue({ data, error: null }),
+                }),
+            });
+
             mockSupabase.from.mockImplementation((table: string) => {
                 if (table === "profiles") {
-                    return {
-                        select: jest.fn().mockReturnValue({
-                            eq: jest.fn().mockReturnValue({
-                                single: jest.fn().mockResolvedValue({ data: mockProfile, error: null }),
-                            }),
-                        }),
-                    };
+                    return createChainableMock(mockProfile);
                 }
                 if (table === "group_members") {
-                    return {
-                        select: jest.fn().mockReturnValue({
-                            eq: jest.fn().mockReturnValue({
-                                eq: jest.fn().mockReturnValue({
-                                    single: jest.fn().mockResolvedValue({ data: mockMember, error: null }),
-                                }),
-                            }),
-                        }),
-                    };
+                    return createChainableMock(mockMember);
                 }
-                return {};
+                return createChainableMock(null);
             });
 
             const result = await groupsService.addMember("group-123", "john@example.com", "admin-123");
@@ -368,6 +378,148 @@ describe("groupsService", () => {
             const result = await groupsService.isUserAdmin("group-123", "user-123");
 
             expect(result).toBe(false);
+        });
+    });
+
+    describe("regenerateInviteCode", () => {
+        it("should regenerate invite code successfully", async () => {
+            mockSupabase.rpc.mockResolvedValue({ data: "NEWCODE1", error: null });
+
+            const result = await groupsService.regenerateInviteCode("group-123");
+
+            expect(mockSupabase.rpc).toHaveBeenCalledWith("regenerate_group_invite_code", {
+                group_uuid: "group-123",
+            });
+            expect(result.success).toBe(true);
+            expect(result.inviteCode).toBe("NEWCODE1");
+        });
+
+        it("should return error on failure", async () => {
+            mockSupabase.rpc.mockResolvedValue({ data: null, error: { message: "RPC error" } });
+
+            const result = await groupsService.regenerateInviteCode("group-123");
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe("RPC error");
+        });
+    });
+
+    describe("joinGroupByInviteCode", () => {
+        it("should join group successfully with valid code", async () => {
+            mockSupabase.rpc.mockResolvedValue({
+                data: { success: true, group_id: "group-123", group_name: "Test Group" },
+                error: null,
+            });
+
+            const result = await groupsService.joinGroupByInviteCode("TESTCODE", "user-123");
+
+            expect(mockSupabase.rpc).toHaveBeenCalledWith("join_group_by_invite_code", {
+                code: "TESTCODE",
+                joining_user_id: "user-123",
+            });
+            expect(result.success).toBe(true);
+            expect(result.groupId).toBe("group-123");
+            expect(result.groupName).toBe("Test Group");
+        });
+
+        it("should convert code to uppercase", async () => {
+            mockSupabase.rpc.mockResolvedValue({
+                data: { success: true, group_id: "group-123", group_name: "Test Group" },
+                error: null,
+            });
+
+            await groupsService.joinGroupByInviteCode("testcode", "user-123");
+
+            expect(mockSupabase.rpc).toHaveBeenCalledWith("join_group_by_invite_code", {
+                code: "TESTCODE",
+                joining_user_id: "user-123",
+            });
+        });
+
+        it("should return error for invalid code", async () => {
+            mockSupabase.rpc.mockResolvedValue({
+                data: { success: false, error: "Invalid invite code" },
+                error: null,
+            });
+
+            const result = await groupsService.joinGroupByInviteCode("BADCODE1", "user-123");
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe("Invalid invite code");
+        });
+
+        it("should return error if already a member", async () => {
+            mockSupabase.rpc.mockResolvedValue({
+                data: { success: false, error: "You are already a member of this group" },
+                error: null,
+            });
+
+            const result = await groupsService.joinGroupByInviteCode("TESTCODE", "user-123");
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe("You are already a member of this group");
+        });
+
+        it("should handle RPC errors", async () => {
+            mockSupabase.rpc.mockResolvedValue({
+                data: null,
+                error: { message: "Database error" },
+            });
+
+            const result = await groupsService.joinGroupByInviteCode("TESTCODE", "user-123");
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe("Database error");
+        });
+    });
+
+    describe("getGroupByInviteCode", () => {
+        it("should return group for valid code", async () => {
+            mockSupabase.from.mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    eq: jest.fn().mockReturnValue({
+                        single: jest.fn().mockResolvedValue({
+                            data: { id: "group-123", name: "Test Group" },
+                            error: null,
+                        }),
+                    }),
+                }),
+            });
+
+            const result = await groupsService.getGroupByInviteCode("TESTCODE");
+
+            expect(result).toEqual({ id: "group-123", name: "Test Group" });
+        });
+
+        it("should return null for invalid code", async () => {
+            mockSupabase.from.mockReturnValue({
+                select: jest.fn().mockReturnValue({
+                    eq: jest.fn().mockReturnValue({
+                        single: jest.fn().mockResolvedValue({
+                            data: null,
+                            error: { code: "PGRST116" },
+                        }),
+                    }),
+                }),
+            });
+
+            const result = await groupsService.getGroupByInviteCode("BADCODE1");
+
+            expect(result).toBeNull();
+        });
+
+        it("should convert code to uppercase and trim", async () => {
+            const mockEq = jest.fn().mockReturnValue({
+                single: jest.fn().mockResolvedValue({ data: { id: "group-123", name: "Test" }, error: null }),
+            });
+            mockSupabase.from.mockReturnValue({ 
+                select: jest.fn().mockReturnValue({ eq: mockEq }) 
+            });
+
+            await groupsService.getGroupByInviteCode("  testcode  ");
+
+            expect(mockSupabase.from).toHaveBeenCalledWith("groups");
+            expect(mockEq).toHaveBeenCalledWith("invite_code", "TESTCODE");
         });
     });
 });

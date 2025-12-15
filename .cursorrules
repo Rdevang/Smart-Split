@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.3.0 | LAST UPDATED: 2024-12-12
+# VERSION: 2.4.0 | LAST UPDATED: 2024-12-15
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -79,7 +79,9 @@
   "zod": "^4.1.13",
   "jest": "^30.2.0",
   "@testing-library/react": "^16.3.0",
-  "@testing-library/jest-dom": "^6.9.1"
+  "@testing-library/jest-dom": "^6.9.1",
+  "qrcode.react": "^4.2.0",
+  "html5-qrcode": "^2.3.8"
 }
 ```
 
@@ -353,6 +355,9 @@ describe("Component", () => {
 - `get_group_balances(group_uuid)` - Calculate who owes whom in a group
 - `handle_new_user()` - Auto-create profile on user signup (trigger)
 - `update_updated_at_column()` - Auto-update timestamps (trigger)
+- `generate_invite_code()` - Generate unique 8-char alphanumeric code
+- `regenerate_group_invite_code(group_uuid)` - Reset group's invite code
+- `join_group_by_invite_code(code, user_id)` - Join group with invite code
 
 ---
 
@@ -401,6 +406,99 @@ npm run test:coverage # Coverage report
 ---
 
 ## LEARNINGS & DECISIONS LOG
+
+### 2024-12-15: Session 6 - QR Code Invite System & Test Fixes
+
+#### QR Code Group Joining Feature:
+- Implemented complete QR code-based group joining system
+- Added `invite_code` column to groups table (auto-generated 8-char alphanumeric)
+- Database functions: `generate_invite_code()`, `regenerate_group_invite_code()`, `join_group_by_invite_code()`
+- Join flow: Scan QR → Preview group → Confirm → Join as member
+
+#### QR Code Libraries:
+- `qrcode.react` - For generating QR codes (`QRCodeSVG` component)
+- `html5-qrcode` - For scanning QR codes with camera
+
+#### QR Scanner Implementation Pattern:
+```tsx
+// Key learnings for html5-qrcode:
+// 1. Scanner container div MUST exist in DOM before calling start()
+// 2. Use minHeight on container to ensure video has space to render
+// 3. Add global CSS to force video visibility
+// 4. Use facingMode: "environment" for back camera preference on mobile
+// 5. Cleanup: call stop() in useEffect cleanup
+
+const html5Qrcode = new Html5Qrcode("qr-reader-container");
+await html5Qrcode.start(
+    { facingMode: "environment" }, // Prefer back camera
+    { fps: 10, qrbox: { width: 250, height: 250 } },
+    onScanSuccess,
+    onScanError
+);
+```
+
+#### Camera Permission Handling:
+- Request permission with `navigator.mediaDevices.getUserMedia()` before starting scanner
+- Handle `NotAllowedError`, `NotFoundError`, `NotReadableError`, `OverconstrainedError`
+- Provide clear error messages and retry button for users
+
+#### UI Components Added:
+- `QRScanner` - Camera-based QR scanning with error handling
+- `GroupQRCode` - QR code display with copy/download/share options
+- `ShareGroupButton` - Dropdown with QR code and invite link sharing
+
+#### New Files:
+- `src/components/ui/qr-scanner.tsx` - Reusable QR scanner component
+- `src/components/features/groups/group-qr-code.tsx` - Group QR code display
+- `src/components/features/groups/share-group-button.tsx` - Share dropdown
+- `src/app/(dashboard)/groups/join/` - Join group page with form
+- `src/app/api/groups/preview/route.ts` - API route for group preview
+- `supabase/migrations/20241215_add_group_invite_codes.sql` - Database migration
+
+#### Testing Patterns for Browser APIs:
+
+**Mocking navigator.clipboard (jsdom limitation):**
+```tsx
+// Must use Object.defineProperty at module level, not in beforeEach
+Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: jest.fn().mockResolvedValue(undefined) },
+    writable: true,
+    configurable: true,
+});
+```
+
+**Mocking html5-qrcode:**
+```tsx
+jest.mock("html5-qrcode", () => ({
+    Html5Qrcode: Object.assign(
+        jest.fn().mockImplementation(() => ({
+            start: jest.fn().mockResolvedValue(undefined),
+            stop: jest.fn().mockResolvedValue(undefined),
+        })),
+        { getCameras: () => mockGetCameras() }
+    ),
+}));
+```
+
+**Mocking navigator.mediaDevices:**
+```tsx
+Object.defineProperty(navigator, "mediaDevices", {
+    value: { getUserMedia: mockGetUserMedia },
+    configurable: true,
+});
+```
+
+#### Test Fixes Applied:
+1. `simplified-debts.test.tsx` - Added required `expenses` prop, removed obsolete badge test
+2. `add-member-form.test.tsx` - Updated for new 3-tab UI ("From Trips", "By Email", "New Person")
+3. `expense-form.test.tsx` - Changed `getByText` to `getAllByText` for elements in multiple locations
+
+#### Key Testing Lessons:
+- When component signature changes (new required props), tests MUST be updated
+- Use `getAllByText` when element text appears in multiple places (dropdown + list)
+- Mocking browser APIs in jsdom requires `Object.defineProperty` with `configurable: true`
+- Static methods on mocked classes need `Object.assign` pattern
+- Test actual behavior, not implementation details that may change
 
 ### 2024-12-12: Session 5 - Navigation Progress & Bug Fixes
 
@@ -572,6 +670,23 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 
 ## MISTAKES & CORRECTIONS
 
+### 2024-12-15 (Session 6)
+- **Mistake**: Tests using `getByText("Mom")` failed when "Mom" appeared in both dropdown and list
+- **Correction**: Use `getAllByText("Mom")` and check `.length` or use more specific queries
+- **Prevention**: When element text may appear multiple times, use `getAllByText` or more specific selectors
+
+- **Mistake**: Test expected "Existing User" button but component was refactored to "By Email"
+- **Correction**: Updated test to match new component text
+- **Prevention**: When refactoring component UI, search for tests that may reference old text
+
+- **Mistake**: Mocking `navigator.clipboard` in `beforeEach` caused "Cannot redefine property" error
+- **Correction**: Use `Object.defineProperty` at module level with `configurable: true`
+- **Prevention**: Browser API mocks must be defined at module level, not in test lifecycle hooks
+
+- **Mistake**: html5-qrcode scanner container div didn't exist when `start()` was called
+- **Correction**: Always render the container div (hidden when not active), use `minHeight` for space
+- **Prevention**: DOM elements for third-party libraries must exist before library initialization
+
 ### 2024-12-11 (Session 4)
 - **Mistake**: Server Components using browser Supabase client - RLS saw no authenticated user
 - **Correction**: Created separate `*.server.ts` services that use server client
@@ -651,6 +766,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Form ID generation → React `useId()` hook for SSR safety
 - [x] Navigation loading UX → Top progress bar + route skeleton loading.tsx files
 - [x] Client providers pattern → Wrap children in Providers component in root layout
+- [x] Group sharing → QR code + invite code system with `qrcode.react` and `html5-qrcode`
+- [x] Group joining → Dedicated `/groups/join` page with code entry + QR scanning
 
 ---
 
@@ -672,19 +789,24 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - Navigation progress bar - NProgress-style UX for route changes
 - loading.tsx skeletons - instant feedback during navigation
 - Providers component pattern - centralized client-side providers
+- QR code invite system - frictionless group joining experience
+- `qrcode.react` for generation - simple SVG output, works well
+- `html5-qrcode` for scanning - works on mobile and desktop
 
 ---
 
 ## WHAT NEEDS IMPROVEMENT
 
 - [x] Add loading skeletons for better UX ✅
-- [ ] Implement toast notifications for feedback
-- [ ] Add error boundaries for graceful failures
 - [x] Build Groups CRUD functionality ✅
 - [x] Build Expenses CRUD functionality ✅
+- [x] QR code group invite system ✅
+- [ ] Implement toast notifications for feedback
+- [ ] Add error boundaries for graceful failures
 - [ ] Add activity feed with real-time updates
 - [ ] Settlement flow (record payments between users)
 - [ ] Delete group/expense confirmation modals
+- [ ] Test QR scanner across different devices/browsers
 
 ---
 
@@ -715,6 +837,9 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ❌ Don't use `@media (prefers-color-scheme)` alone for manual dark mode toggle
 ❌ Don't use `!== null` to check optional properties - use truthy check `!!value` instead
 ❌ Don't forget to set avatarUrl when displaying current user's data
+❌ Don't use `getByText` when element appears multiple times - use `getAllByText`
+❌ Don't forget to update tests when component props/signatures change
+❌ Don't mock browser APIs in `beforeEach` - use `Object.defineProperty` at module level
 
 ---
 
@@ -758,10 +883,16 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | `src/app/(dashboard)/layout.tsx` | Protected dashboard layout | 2024-12-10 |
 | `src/app/(dashboard)/settings/profile/` | Profile settings page | 2024-12-10 |
 | `src/types/database.ts` | Generated Supabase types | 2024-12-10 |
-| `supabase/migrations/` | Database migrations + RLS fixes | 2024-12-11 |
+| `supabase/migrations/` | Database migrations + RLS fixes | 2024-12-15 |
 | `jest.config.ts` | Jest configuration | 2024-12-10 |
 | `jest.setup.ts` | Test setup and mocks | 2024-12-10 |
 | `next.config.ts` | Next.js config with image domains | 2024-12-10 |
+| `src/components/ui/qr-scanner.tsx` | QR code scanner with camera | 2024-12-15 |
+| `src/components/features/groups/group-qr-code.tsx` | Group QR code display | 2024-12-15 |
+| `src/components/features/groups/share-group-button.tsx` | Share dropdown with QR/link | 2024-12-15 |
+| `src/app/(dashboard)/groups/join/` | Join group page and form | 2024-12-15 |
+| `src/app/api/groups/preview/route.ts` | API route for group preview | 2024-12-15 |
+| `supabase/migrations/20241215_add_group_invite_codes.sql` | Invite code migration | 2024-12-15 |
 
 ---
 
@@ -792,11 +923,11 @@ docs/
 
 ## NEXT SESSION PRIORITIES
 
-1. Toast notifications for user feedback (success/error messages)
-2. Settlement flow (record payments, mark splits as settled)
-3. Activity feed with real-time updates
-4. Delete confirmation modals for groups/expenses
-5. Add forgot-password page (currently 404)
-6. GitHub OAuth setup (configure in GitHub Developer settings)
-7. Deploy latest changes to Vercel production
-8. Fix pre-existing TypeScript errors in test files
+1. Deploy QR code feature to Vercel production
+2. Toast notifications for user feedback (success/error messages)
+3. Settlement flow (record payments, mark splits as settled)
+4. Activity feed with real-time updates
+5. Delete confirmation modals for groups/expenses
+6. Add forgot-password page (currently 404)
+7. GitHub OAuth setup (configure in GitHub Developer settings)
+8. Test QR scanning on mobile devices (iOS/Android)
