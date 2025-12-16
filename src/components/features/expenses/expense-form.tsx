@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { expensesService } from "@/services/expenses";
+import { onExpenseMutation } from "@/app/(dashboard)/actions";
 import type { Database } from "@/types/database";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
@@ -247,6 +248,13 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                 toast.error(result.error);
                 return;
             }
+
+            // Invalidate cache for the group and all affected members
+            const participantIds = selectedMembers
+                .filter((id) => !id.startsWith("placeholder:"))
+                .map((id) => id);
+            const paidByUserId = paidBy.startsWith("placeholder:") ? "" : paidBy;
+            await onExpenseMutation(group.id, paidByUserId, participantIds);
 
             toast.success(`Expense "$${totalAmount.toFixed(2)}" added successfully!`);
             router.push(`/groups/${group.id}`);

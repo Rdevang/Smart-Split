@@ -4,7 +4,7 @@ import { Plus, Users, QrCode } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/features/groups/group-card";
-import { groupsServerService } from "@/services/groups.server";
+import { groupsCachedServerService } from "@/services/groups.cached.server";
 
 export default async function GroupsPage() {
     const supabase = await createClient();
@@ -14,7 +14,8 @@ export default async function GroupsPage() {
         redirect("/login");
     }
 
-    const groupsResult = await groupsServerService.getGroups(user.id);
+    // Using CACHED service for fast page loads
+    const groupsResult = await groupsCachedServerService.getGroups(user.id);
     const groups = groupsResult.data;
 
     return (

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { withLock, LockKeys } from "@/lib/distributed-lock";
 import type { Database } from "@/types/database";
 
 type Group = Database["public"]["Tables"]["groups"]["Row"];
@@ -456,6 +457,40 @@ export const groupsService = {
     },
 
     async recordSettlement(
+        groupId: string,
+        fromUserId: string,
+        toUserId: string,
+        amount: number,
+        recordedBy: string,
+        fromIsPlaceholder: boolean = false,
+        toIsPlaceholder: boolean = false
+    ): Promise<{ success: boolean; error?: string; pending?: boolean; message?: string }> {
+        // Use distributed lock to prevent double settlements
+        // This ensures only one settlement can be processed at a time for this pair
+        try {
+            return await withLock(
+                LockKeys.settlement(groupId, fromUserId, toUserId),
+                async () => {
+                    return this._recordSettlementInternal(
+                        groupId, fromUserId, toUserId, amount, recordedBy,
+                        fromIsPlaceholder, toIsPlaceholder
+                    );
+                },
+                { ttl: 15 }  // 15 second lock timeout
+            );
+        } catch (error) {
+            if (error instanceof Error && error.message.includes("being processed")) {
+                return { 
+                    success: false, 
+                    error: "This settlement is already being processed. Please wait and try again." 
+                };
+            }
+            throw error;
+        }
+    },
+
+    // Internal implementation (called within lock)
+    async _recordSettlementInternal(
         groupId: string,
         fromUserId: string,
         toUserId: string,

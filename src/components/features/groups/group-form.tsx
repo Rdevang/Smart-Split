@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
+import { onGroupMutation } from "@/app/(dashboard)/actions";
 
 const groupSchema = z.object({
     name: z.string().min(1, "Group name is required").max(100, "Name too long"),
@@ -100,6 +101,11 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
                     return;
                 }
 
+                // Invalidate cache for user's groups
+                if (result.group?.id) {
+                    await onGroupMutation(result.group.id, userId);
+                }
+
                 toast.success(`Group "${data.name}" created!`);
                 router.push(`/groups/${result.group?.id}`);
             } else if (initialData?.id) {
@@ -116,6 +122,9 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
                     toast.error(result.error || "Failed to update group");
                     return;
                 }
+
+                // Invalidate cache for the group
+                await onGroupMutation(initialData.id, userId);
 
                 toast.success("Group updated successfully!");
                 router.push(`/groups/${initialData.id}`);

@@ -1,0 +1,549 @@
+import { getRedis, recordFailure, recordSuccess } from "./redis";
+import { compressIfNeeded, decompressIfNeeded, COMPRESSION_THRESHOLD } from "./compression";
+
+// ============================================
+// CACHE VERSIONING (Per-Data-Type)
+// ============================================
+// Prevents "corrupted cache" scenario when data structure changes.
+// 
+// Problem: Deploy new code that expects { firstName, lastName }
+//          but Redis has old cached { name } → site crashes!
+// 
+// Solution: Version keys BY DATA TYPE. When you change a specific data
+//           structure, bump ONLY that version. Other caches stay warm.
+// 
+// WHEN TO BUMP A VERSION:
+// - Changed the shape of that specific cached data
+// - Changed how that data is computed
+// - Changed the query that fetches that data
+// 
+// EXAMPLE: Changed group balance calculation?
+//          → Bump DATA_VERSIONS.balances from "v1" to "v2"
+//          → Only balance caches are invalidated
+//          → Group details, user profiles, etc. stay cached
+
+/**
+ * Per-data-type cache versions
+ * Bump ONLY the specific type when its structure changes
+ */
+export const DATA_VERSIONS = {
+    // Group data
+    groups: "v1",       // Group details, members, settings
+    balances: "v1",     // Balance calculations (expensive!)
+    settlements: "v1",  // Settlement records
+
+    // Expense data
+    expenses: "v1",     // Expense lists and details
+    analytics: "v1",    // Charts, trends, aggregations
+
+    // User data
+    users: "v1",        // User profiles, preferences
+    dashboard: "v1",    // Dashboard aggregates
+
+    // Activity
+    activity: "v1",     // Activity feeds
+} as const;
+
+/**
+ * Get versioned key for a specific data type
+ * 
+ * @example
+ * versionedKey("groups", "group:123:details") → "groups-v1:group:123:details"
+ */
+export function versionedKey(
+    dataType: keyof typeof DATA_VERSIONS,
+    key: string
+): string {
+    const version = DATA_VERSIONS[dataType];
+    return `${dataType}-${version}:${key}`;
+}
+
+/**
+ * Check if a key is already versioned (has any data type prefix)
+ */
+function isVersioned(key: string): boolean {
+    return Object.keys(DATA_VERSIONS).some(type =>
+        key.startsWith(`${type}-`)
+    );
+}
+
+/**
+ * Auto-version a raw key by detecting its type from the key pattern
+ * Falls back to "groups-v1" if type cannot be determined
+ */
+export function autoVersionKey(key: string): string {
+    // Already versioned? Return as-is
+    if (isVersioned(key)) {
+        return key;
+    }
+
+    // Detect data type from key pattern
+    if (key.includes(":balances") || key.includes(":balance")) {
+        return versionedKey("balances", key);
+    }
+    if (key.includes(":settlements") || key.includes(":settlement")) {
+        return versionedKey("settlements", key);
+    }
+    if (key.includes(":expenses") || key.includes(":expense")) {
+        return versionedKey("expenses", key);
+    }
+    if (key.includes(":analytics") || key.includes(":trend") || key.includes(":category")) {
+        return versionedKey("analytics", key);
+    }
+    if (key.includes(":dashboard") || key.includes(":recent")) {
+        return versionedKey("dashboard", key);
+    }
+    if (key.includes(":activity")) {
+        return versionedKey("activity", key);
+    }
+    if (key.startsWith("user:")) {
+        return versionedKey("users", key);
+    }
+    if (key.startsWith("group:")) {
+        return versionedKey("groups", key);
+    }
+
+    // Default fallback
+    return versionedKey("groups", key);
+}
+
+// ============================================
+// CACHE KEYS (Pre-versioned by data type)
+// ============================================
+
+export const CacheKeys = {
+    // Group-related (uses "groups" version)
+    groupDetails: (groupId: string) => versionedKey("groups", `group:${groupId}:details`),
+    groupMembers: (groupId: string) => versionedKey("groups", `group:${groupId}:members`),
+
+    // Balances (uses "balances" version - expensive computation!)
+    groupBalances: (groupId: string) => versionedKey("balances", `group:${groupId}:balances`),
+
+    // Settlements (uses "settlements" version)
+    groupSettlements: (groupId: string) => versionedKey("settlements", `group:${groupId}:settlements`),
+
+    // Analytics (uses "analytics" version)
+    groupAnalytics: (groupId: string) => versionedKey("analytics", `group:${groupId}:analytics`),
+    groupExpensesByCategory: (groupId: string) => versionedKey("analytics", `group:${groupId}:expenses:category`),
+    groupExpensesTrend: (groupId: string) => versionedKey("analytics", `group:${groupId}:expenses:trend`),
+
+    // Expenses (uses "expenses" version)
+    groupExpenses: (groupId: string) => versionedKey("expenses", `group:${groupId}:expenses`),
+
+    // User-related (uses "users" version)
+    userProfile: (userId: string) => versionedKey("users", `user:${userId}:profile`),
+    userGroups: (userId: string) => versionedKey("users", `user:${userId}:groups`),
+
+    // Dashboard (uses "dashboard" version)
+    userDashboard: (userId: string) => versionedKey("dashboard", `user:${userId}:dashboard`),
+
+    // Activity feed (uses "activity" version)
+    groupActivity: (groupId: string) => versionedKey("activity", `group:${groupId}:activity`),
+} as const;
+
+// TTL values in seconds
+export const CacheTTL = {
+    SHORT: 60,           // 1 minute - for very dynamic data
+    MEDIUM: 300,         // 5 minutes - for semi-dynamic data
+    LONG: 900,           // 15 minutes - for expensive computations
+    VERY_LONG: 3600,     // 1 hour - for rarely changing data
+    NULL_RESULT: 120,    // 2 minutes - for caching "not found" results (cache penetration protection)
+} as const;
+
+// Stale time = when to start background refresh (before actual expiry)
+// Data is still served but refreshed in background
+const STALE_RATIO = 0.8; // Start refresh at 80% of TTL
+
+// Jitter: Add random variation to TTL to prevent thundering herd on expiration
+// E.g., 300 seconds ± 10% = 270-330 seconds
+const JITTER_PERCENT = 0.1; // 10% variation
+
+/**
+ * Add jitter to TTL to prevent synchronized cache expiration (thundering herd)
+ * Example: TTL of 300 becomes 270-330 (±10%)
+ */
+function addJitter(ttl: number): number {
+    const jitterRange = ttl * JITTER_PERCENT;
+    const jitter = (Math.random() * 2 - 1) * jitterRange; // Random between -jitterRange and +jitterRange
+    return Math.round(ttl + jitter);
+}
+
+// Sentinel value to distinguish "cached null" from "cache miss"
+const NULL_SENTINEL = "__NULL__";
+
+// Cache entry with metadata for stale-while-revalidate
+interface CacheEntry<T> {
+    data: T | typeof NULL_SENTINEL;  // Can be actual data or null sentinel
+    timestamp: number;
+    isNull?: boolean;  // Flag to indicate this is a cached "not found"
+    compressed?: boolean;  // Flag to indicate data is compressed
+}
+
+// Compressed cache entry stored in Redis (data is a compressed string)
+interface CompressedCacheEntry {
+    data: string;  // Compressed JSON string
+    timestamp: number;
+    isNull?: boolean;
+    compressed: true;
+}
+
+/**
+ * Serialize cache entry with optional compression
+ * Large data (>1KB) is automatically compressed
+ */
+function serializeCacheEntry<T>(entry: CacheEntry<T>): CacheEntry<T> | CompressedCacheEntry {
+    const jsonSize = JSON.stringify(entry.data).length;
+
+    // Only compress if data is large enough to benefit
+    if (jsonSize < COMPRESSION_THRESHOLD || entry.isNull) {
+        return entry;
+    }
+
+    // Compress the data
+    const compressedData = compressIfNeeded(entry.data);
+
+    return {
+        data: compressedData,
+        timestamp: entry.timestamp,
+        isNull: entry.isNull,
+        compressed: true,
+    };
+}
+
+/**
+ * Deserialize cache entry, decompressing if needed
+ */
+function deserializeCacheEntry<T>(
+    entry: CacheEntry<T> | CompressedCacheEntry
+): CacheEntry<T> {
+    if (!entry.compressed) {
+        return entry as CacheEntry<T>;
+    }
+
+    // Decompress the data
+    const decompressedData = decompressIfNeeded<T>(entry.data as string);
+
+    return {
+        data: decompressedData,
+        timestamp: entry.timestamp,
+        isNull: entry.isNull,
+    };
+}
+
+/**
+ * Generic cache wrapper with:
+ * 1. Cache stampede protection (lock mechanism)
+ * 2. Stale-while-revalidate (return stale data, refresh in background)
+ * 3. TTL jitter (prevents synchronized expiration - thundering herd)
+ * 4. Null caching (prevents cache penetration attacks)
+ * 
+ * @param key - Cache key
+ * @param fetcher - Function to fetch data if cache miss
+ * @param ttl - Time to live in seconds
+ * @returns Cached or fresh data
+ */
+export async function cached<T>(
+    key: string,
+    fetcher: () => Promise<T>,
+    ttl: number = CacheTTL.MEDIUM
+): Promise<T> {
+    const redis = getRedis();
+
+    // If Redis is not configured, just fetch directly (graceful degradation)
+    if (!redis) {
+        return fetcher();
+    }
+
+    // Auto-version the key to prevent corrupted cache issues on deploy
+    const vKey = autoVersionKey(key);
+
+    try {
+        // Try to get from cache (with metadata)
+        const rawEntry = await redis.get<CacheEntry<T> | CompressedCacheEntry>(vKey);
+
+        // Redis responded successfully - reset circuit breaker
+        recordSuccess();
+
+        if (rawEntry !== null && rawEntry.data !== undefined) {
+            // Decompress if needed
+            const cachedEntry = deserializeCacheEntry<T>(rawEntry);
+
+            // Check if this is a cached "not found" result (cache penetration protection)
+            if (cachedEntry.isNull || cachedEntry.data === NULL_SENTINEL) {
+                // Return null/empty - prevents repeated DB hits for non-existent data
+                return null as T;
+            }
+
+            const age = (Date.now() - cachedEntry.timestamp) / 1000; // Age in seconds
+            const staleThreshold = ttl * STALE_RATIO;
+
+            if (age < staleThreshold) {
+                // Fresh data - return immediately
+                return cachedEntry.data as T;
+            }
+
+            // Stale but not expired - return immediately BUT refresh in background
+            // This is the "stale-while-revalidate" pattern
+            refreshInBackground(vKey, fetcher, ttl, redis);
+            return cachedEntry.data as T;
+        }
+
+        // Cache miss - fetch with stampede protection
+        return fetchWithLock(vKey, fetcher, ttl, redis);
+    } catch (error) {
+        // Record failure for circuit breaker
+        recordFailure();
+
+        // FAIL OPEN: On any Redis error, fall back to database
+        console.error(`Cache error for ${key}:`, error);
+        return fetcher();
+    }
+}
+
+/**
+ * Fetch data with lock to prevent cache stampede
+ * Includes jitter and null caching for penetration protection
+ */
+async function fetchWithLock<T>(
+    key: string,
+    fetcher: () => Promise<T>,
+    ttl: number,
+    redis: NonNullable<ReturnType<typeof getRedis>>
+): Promise<T> {
+    const lockKey = `lock:${key}`;
+
+    // Try to acquire lock
+    const lockAcquired = await redis.set(lockKey, "1", {
+        ex: 10, // Lock expires in 10 seconds (safety net)
+        nx: true // Only set if doesn't exist
+    });
+
+    if (!lockAcquired) {
+        // Another process is fetching - wait briefly and retry cache
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const rawRetryData = await redis.get<CacheEntry<T> | CompressedCacheEntry>(key);
+        if (rawRetryData !== null && rawRetryData.data !== undefined) {
+            const retryData = deserializeCacheEntry<T>(rawRetryData);
+            // Check for cached null
+            if (retryData.isNull) {
+                return null as T;
+            }
+            return retryData.data as T;
+        }
+        // Still no data - proceed to fetch anyway (lock holder may have failed)
+    }
+
+    try {
+        // Fetch fresh data
+        const freshData = await fetcher();
+
+        // Check if result is null/empty (cache penetration protection)
+        const isNullResult = freshData === null ||
+            freshData === undefined ||
+            (Array.isArray(freshData) && freshData.length === 0);
+
+        if (isNullResult) {
+            // Cache the "not found" with shorter TTL to prevent repeated DB hits
+            const nullEntry: CacheEntry<T> = {
+                data: NULL_SENTINEL as T,
+                timestamp: Date.now(),
+                isNull: true,
+            };
+            await redis.set(key, nullEntry, { ex: CacheTTL.NULL_RESULT });
+        } else {
+            // Store real data with jittered TTL (compress if large)
+            const entry: CacheEntry<T> = {
+                data: freshData,
+                timestamp: Date.now(),
+            };
+            const serializedEntry = serializeCacheEntry(entry);
+            const jitteredTTL = addJitter(ttl);
+            await redis.set(key, serializedEntry, { ex: jitteredTTL });
+        }
+
+        return freshData;
+    } finally {
+        // Release lock (fire and forget)
+        redis.del(lockKey).catch(() => { });
+    }
+}
+
+/**
+ * Refresh cache in background (non-blocking)
+ * Uses jitter to prevent synchronized expiration
+ */
+function refreshInBackground<T>(
+    key: string,
+    fetcher: () => Promise<T>,
+    ttl: number,
+    redis: NonNullable<ReturnType<typeof getRedis>>
+): void {
+    // Don't await - run in background
+    const refreshKey = `refresh:${key}`;
+
+    // Check if refresh is already in progress
+    redis.set(refreshKey, "1", { ex: 30, nx: true }).then(async (acquired) => {
+        if (!acquired) return; // Another refresh in progress
+
+        try {
+            const freshData = await fetcher();
+
+            // Check if result is null/empty
+            const isNullResult = freshData === null ||
+                freshData === undefined ||
+                (Array.isArray(freshData) && freshData.length === 0);
+
+            if (isNullResult) {
+                const nullEntry: CacheEntry<T> = {
+                    data: NULL_SENTINEL as T,
+                    timestamp: Date.now(),
+                    isNull: true,
+                };
+                await redis.set(key, nullEntry, { ex: CacheTTL.NULL_RESULT });
+            } else {
+                // Store with compression if large
+                const entry: CacheEntry<T> = {
+                    data: freshData,
+                    timestamp: Date.now(),
+                };
+                const serializedEntry = serializeCacheEntry(entry);
+                const jitteredTTL = addJitter(ttl);
+                await redis.set(key, serializedEntry, { ex: jitteredTTL });
+            }
+        } catch (error) {
+            console.error(`Background refresh failed for ${key}:`, error);
+        } finally {
+            redis.del(refreshKey).catch(() => { });
+        }
+    }).catch(() => { });
+}
+
+/**
+ * Invalidate a specific cache key
+ */
+export async function invalidateCache(key: string): Promise<void> {
+    const redis = getRedis();
+    if (!redis) return;
+
+    // Auto-version the key based on its data type
+    const vKey = autoVersionKey(key);
+
+    try {
+        await redis.del(vKey);
+    } catch (error) {
+        console.error(`Failed to invalidate cache ${vKey}:`, error);
+    }
+}
+
+/**
+ * Invalidate multiple cache keys matching a pattern
+ * Use with caution - can be slow with many keys
+ */
+export async function invalidateCachePattern(pattern: string): Promise<void> {
+    const redis = getRedis();
+    if (!redis) return;
+
+    // Auto-version the pattern based on its data type
+    const vPattern = autoVersionKey(pattern);
+
+    try {
+        // Upstash SCAN returns [cursor: string, keys: string[]]
+        let cursor = "0";
+        const keysToDelete: string[] = [];
+
+        do {
+            const result = await redis.scan(cursor, { match: vPattern, count: 100 });
+            cursor = String(result[0]); // Cursor is returned as string
+            keysToDelete.push(...result[1]);
+        } while (cursor !== "0");
+
+        if (keysToDelete.length > 0) {
+            await redis.del(...keysToDelete);
+        }
+    } catch (error) {
+        console.error(`Failed to invalidate cache pattern ${pattern}:`, error);
+    }
+}
+
+/**
+ * Invalidate all cache keys for a group
+ * Call this when group data changes (expense added/deleted, settlement made, etc.)
+ */
+export async function invalidateGroupCache(groupId: string): Promise<void> {
+    const redis = getRedis();
+    if (!redis) return;
+
+    const keysToInvalidate = [
+        CacheKeys.groupBalances(groupId),
+        CacheKeys.groupMembers(groupId),
+        CacheKeys.groupDetails(groupId),
+        CacheKeys.groupAnalytics(groupId),
+        CacheKeys.groupExpensesByCategory(groupId),
+        CacheKeys.groupExpensesTrend(groupId),
+        CacheKeys.groupActivity(groupId),
+    ];
+
+    try {
+        await redis.del(...keysToInvalidate);
+    } catch (error) {
+        console.error(`Failed to invalidate group cache ${groupId}:`, error);
+    }
+}
+
+/**
+ * Invalidate user dashboard cache
+ * Call this when user's group memberships or expenses change
+ */
+export async function invalidateUserCache(userId: string): Promise<void> {
+    const redis = getRedis();
+    if (!redis) return;
+
+    const keysToInvalidate = [
+        CacheKeys.userDashboard(userId),
+        CacheKeys.userGroups(userId),
+    ];
+
+    try {
+        await redis.del(...keysToInvalidate);
+    } catch (error) {
+        console.error(`Failed to invalidate user cache ${userId}:`, error);
+    }
+}
+
+/**
+ * Batch cache multiple items at once
+ */
+export async function cacheMultiple<T>(
+    items: Array<{ key: string; value: T; ttl?: number }>
+): Promise<void> {
+    const redis = getRedis();
+    if (!redis) return;
+
+    try {
+        const pipeline = redis.pipeline();
+
+        for (const { key, value, ttl = CacheTTL.MEDIUM } of items) {
+            pipeline.set(key, value, { ex: ttl });
+        }
+
+        await pipeline.exec();
+    } catch (error) {
+        console.error("Failed to batch cache items:", error);
+    }
+}
+
+/**
+ * Get multiple cached items at once
+ */
+export async function getCachedMultiple<T>(keys: string[]): Promise<(T | null)[]> {
+    const redis = getRedis();
+    if (!redis) return keys.map(() => null);
+
+    try {
+        return await redis.mget<T[]>(...keys);
+    } catch (error) {
+        console.error("Failed to get cached items:", error);
+        return keys.map(() => null);
+    }
+}
+

@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { groupsServerService } from "@/services/groups.server";
-import { expensesServerService } from "@/services/expenses.server";
+import { groupsCachedServerService } from "@/services/groups.cached.server";
+import { expensesCachedServerService } from "@/services/expenses.cached.server";
 import { formatCurrency } from "@/lib/currency";
 import {
     CategoryChart,
@@ -29,10 +29,11 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
         redirect("/login");
     }
 
+    // Using CACHED services for lightning-fast analytics loading
     const [group, expensesResult, balances] = await Promise.all([
-        groupsServerService.getGroup(id),
-        expensesServerService.getExpenses(id),
-        groupsServerService.getGroupBalances(id),
+        groupsCachedServerService.getGroup(id),
+        expensesCachedServerService.getExpenses(id),
+        groupsCachedServerService.getGroupBalances(id),
     ]);
 
     if (!group) {

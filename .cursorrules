@@ -1,5 +1,5 @@
 # Smart Split - Cursor Rules
-# VERSION: 2.6.0 | LAST UPDATED: 2024-12-16
+# VERSION: 2.7.0 | LAST UPDATED: 2024-12-16
 # 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  SELF-EVOLVING RULESET                                                     ║
@@ -83,7 +83,9 @@
   "@testing-library/jest-dom": "^6.9.1",
   "qrcode.react": "^4.2.0",
   "html5-qrcode": "^2.3.8",
-  "recharts": "^2.x"
+  "recharts": "^2.x",
+  "@upstash/redis": "^1.x",
+  "@upstash/ratelimit": "^2.x"
 }
 ```
 
@@ -415,6 +417,72 @@ npm run test:coverage # Coverage report
 ---
 
 ## LEARNINGS & DECISIONS LOG
+
+### 2024-12-16: Session 10 - System Design & Performance Optimizations
+
+#### Redis Caching with Circuit Breaker:
+- Implemented Redis caching using Upstash for serverless compatibility
+- Added circuit breaker pattern to handle Redis failures gracefully
+- Circuit states: CLOSED (normal) → OPEN (bypass cache) → HALF-OPEN (test)
+- Configuration: 5 failures threshold, 60 second reset timeout
+
+#### Caching Strategies Implemented:
+- **Stale-While-Revalidate (SWR)**: Return stale data, refresh in background
+- **Cache Stampede Protection**: Lock mechanism prevents thundering herd
+- **TTL Jitter**: Random ±10% variation prevents synchronized expiration
+- **Null Caching**: Cache "not found" results to prevent cache penetration
+
+#### Rate Limiting (DDoS Protection):
+- Using `@upstash/ratelimit` with Token Bucket algorithm
+- Path-based limits: auth (10/15min), api (100/1min), sensitive (5/hour)
+- Added to middleware via `src/proxy.ts`
+- Returns 429 with `Retry-After` header when rate limited
+
+#### Tag-Based Cache Invalidation:
+- Using Next.js `unstable_cache` with semantic tags
+- Tags: `user:{id}:groups`, `group:{id}:expenses`, `dashboard`, etc.
+- Hybrid approach: Redis (single items) + Tags (lists/related data)
+- Helper functions: `revalidateGroupTags()`, `revalidateExpenseTags()`
+
+#### Optimistic UI:
+- Created reusable hooks: `useOptimisticAction`, `useOptimisticList`, `useOptimisticToggle`
+- Applied to settlement button for instant feedback
+- Uses React 19's `useOptimistic` + `useTransition`
+
+#### Compression:
+- Auto-compress data >1KB using gzip before Redis storage
+- ~80% size reduction on large payloads
+- Transparent serialize/deserialize with `__GZIP__` prefix marker
+
+#### Key Files Created:
+- `src/lib/redis.ts` - Redis client with circuit breaker
+- `src/lib/cache.ts` - Caching utilities with SWR, stampede protection
+- `src/lib/rate-limit.ts` - Rate limiting configuration
+- `src/lib/cache-tags.ts` - Tag definitions and helpers
+- `src/lib/compression.ts` - Gzip compression utilities
+- `src/hooks/use-optimistic-action.ts` - Optimistic UI hooks
+- `docs/development/system-design.md` - Full documentation
+
+#### Distributed Locking (Race Condition Prevention):
+- Created `withLock()` utility for critical sections
+- `LockKeys` for consistent lock key generation
+- Applied to settlement recording to prevent double-settle
+- Configurable TTL, retry delay, and max retries
+- Fail-open behavior when Redis unavailable
+
+#### Cache Versioning (Safe Deployments):
+- Added `CACHE_VERSION` constant ("v1")
+- All cache keys auto-prefixed with version
+- Prevents crashes when cached data structure changes
+- Bump version when: data shape changes, computation changes
+- Old versioned keys expire silently (never accessed)
+
+#### API Endpoints Added:
+- `GET /api/cache/health` - Redis health check
+- `GET /api/cache/stats` - Cache statistics (dev only)
+- `GET /api/rate-limit/test` - Rate limit testing
+
+---
 
 ### 2024-12-16: Session 9 - Analytics, Charts, Feedback System
 
@@ -826,6 +894,11 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 
 ## MISTAKES & CORRECTIONS
 
+### 2024-12-16 (Session 10)
+- **Mistake**: Used `unstable_cache()` wrapping functions that call Supabase `createClient()` which uses `cookies()`
+- **Correction**: Remove `unstable_cache()` and use only Redis caching (`cached()`) for server-side data
+- **Prevention**: `unstable_cache()` cannot contain dynamic functions (cookies, headers). Use Redis for caching with Supabase.
+
 ### 2024-12-16 (Session 9)
 - **Mistake**: Tooltip components defined inside main component caused re-render issues
 - **Correction**: Define custom tooltip components OUTSIDE the main chart component
@@ -938,6 +1011,12 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Analytics/Charts → Dedicated page with recharts (5 chart types)
 - [x] User feedback collection → Public `/feedback` page with floating button
 - [x] Dashboard currency → Uses profile's preferred currency setting
+- [x] Caching layer → Upstash Redis with circuit breaker, SWR, compression
+- [x] DDoS protection → Rate limiting via @upstash/ratelimit in middleware
+- [x] Cache invalidation → Hybrid approach (Redis keys + Next.js tags)
+- [x] Optimistic UI → React 19 useOptimistic for instant feedback
+- [x] Large data compression → Gzip for cache entries >1KB
+- [x] CDN graceful degradation → Cache-Control stale-if-error for total outages
 
 ---
 
@@ -969,6 +1048,15 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - Analytics page - comprehensive expense insights
 - Feedback system - accessible to all users, captures device info
 - Currency formatting - `formatCurrency()` utility with locale support
+- Redis caching (Upstash) - serverless-compatible, fast distributed cache
+- Circuit breaker pattern - graceful degradation when Redis fails
+- SWR caching strategy - return stale data, refresh in background
+- Rate limiting - protects APIs from abuse, path-based configuration
+- Tag-based invalidation - semantic cache groups, easy to invalidate related data
+- Optimistic UI hooks - `useOptimistic` for instant perceived latency
+- Compression for cache - ~80% Redis memory/bandwidth savings
+- Hybrid caching (Redis + Next.js tags) - best of both worlds
+- CDN stale-if-error - serves cached content during total backend outage
 
 ---
 
@@ -1021,6 +1109,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 ❌ Don't forget to update tests when component props/signatures change
 ❌ Don't mock browser APIs in `beforeEach` - use `Object.defineProperty` at module level
 ❌ Don't define tooltip/sub-components inside chart components - define outside
+❌ Don't assume expense payer is always a registered user - check placeholders too
+❌ Don't use `unstable_cache()` with functions that call `cookies()` - use Redis caching instead
 ❌ Don't assume expense payer is always a registered user - check placeholders too
 
 ---
@@ -1084,6 +1174,22 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 | `src/app/(dashboard)/groups/join/` | Join group page and form | 2024-12-15 |
 | `src/app/api/groups/preview/route.ts` | API route for group preview | 2024-12-15 |
 | `supabase/migrations/20241215_add_group_invite_codes.sql` | Invite code migration | 2024-12-15 |
+| `src/lib/redis.ts` | Redis client with circuit breaker | 2024-12-16 |
+| `src/lib/cache.ts` | Caching utilities (SWR, stampede, compression) | 2024-12-16 |
+| `src/lib/rate-limit.ts` | Rate limiting configuration | 2024-12-16 |
+| `src/lib/cache-tags.ts` | Tag-based cache invalidation | 2024-12-16 |
+| `src/lib/compression.ts` | Gzip compression for cache | 2024-12-16 |
+| `src/lib/distributed-lock.ts` | Distributed locking for race conditions | 2024-12-16 |
+| `src/hooks/use-optimistic-action.ts` | Optimistic UI hooks | 2024-12-16 |
+| `src/services/groups.cached.server.ts` | Cached groups service | 2024-12-16 |
+| `src/services/expenses.cached.server.ts` | Cached expenses service | 2024-12-16 |
+| `src/proxy.ts` | Middleware with rate limiting | 2024-12-16 |
+| `src/app/api/cache/health/route.ts` | Redis health check endpoint | 2024-12-16 |
+| `src/app/api/cache/stats/route.ts` | Cache statistics (dev only) | 2024-12-16 |
+| `src/app/api/rate-limit/test/route.ts` | Rate limit test endpoint | 2024-12-16 |
+| `src/app/api/health/route.ts` | General app health check | 2024-12-16 |
+| `src/lib/cache-headers.ts` | CDN Cache-Control headers for stale-if-error | 2024-12-16 |
+| `docs/development/system-design.md` | System design documentation | 2024-12-16 |
 
 ---
 

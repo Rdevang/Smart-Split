@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useOptimistic, useTransition } from "react";
 import { ArrowRight, Sparkles, CheckCircle2, List } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ interface SimplifiedDebtsProps {
     expenses: Expense[];
     currentUserId: string;
     currency?: string;
-    onSettle?: () => void;
+    onSettle?: (fromUserId: string, toUserId: string) => void;
 }
 
 /**
@@ -124,10 +124,16 @@ function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): Simp
 }
 
 export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, currency = "USD", onSettle }: SimplifiedDebtsProps) {
-    const [settlingPayment, setSettlingPayment] = useState<string | null>(null);
-    const [settledPayments, setSettledPayments] = useState<Set<string>>(new Set());
     const [isSimplified, setIsSimplified] = useState(true);
     const { success, error: showError } = useToast();
+    
+    // Optimistic UI: Track settled payments with immediate UI update
+    const [isPending, startTransition] = useTransition();
+    const [settledPayments, setOptimisticSettled] = useOptimistic(
+        new Set<string>(),
+        (current: Set<string>, paymentKey: string) => new Set([...current, paymentKey])
+    );
+    const [pendingPaymentKey, setPendingPaymentKey] = useState<string | null>(null);
 
     const payments = useMemo(() => {
         if (isSimplified) {
@@ -152,43 +158,54 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
         );
     }
 
-    const handleSettle = async (payment: SimplifiedPayment) => {
+    const handleSettle = (payment: SimplifiedPayment) => {
         const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
-        setSettlingPayment(paymentKey);
+        setPendingPaymentKey(paymentKey);
 
-        try {
-            // Record the settlement with placeholder flags
-            const result = await groupsService.recordSettlement(
-                groupId,
-                payment.from_user_id,
-                payment.to_user_id,
-                payment.amount,
-                currentUserId,
-                payment.from_is_placeholder || false,
-                payment.to_is_placeholder || false
-            );
+        // Use transition for optimistic update
+        startTransition(async () => {
+            // Immediately show settled state (optimistic)
+            setOptimisticSettled(paymentKey);
 
-            if (result.success) {
-                setSettledPayments((prev) => new Set([...prev, paymentKey]));
-                if (result.pending) {
-                    success(
-                        `Settlement request of ${formatCurrency(payment.amount, currency)} sent to ${payment.to_user_name} for approval`,
-                        "Awaiting Approval"
-                    );
+            try {
+                // Record the settlement with placeholder flags
+                const result = await groupsService.recordSettlement(
+                    groupId,
+                    payment.from_user_id,
+                    payment.to_user_id,
+                    payment.amount,
+                    currentUserId,
+                    payment.from_is_placeholder || false,
+                    payment.to_is_placeholder || false
+                );
+
+                if (result.success) {
+                    if (result.pending) {
+                        success(
+                            `Settlement request of ${formatCurrency(payment.amount, currency)} sent to ${payment.to_user_name} for approval`,
+                            "Awaiting Approval"
+                        );
+                    } else {
+                        success(`Settlement of ${formatCurrency(payment.amount, currency)} recorded!`, "Payment Settled");
+                    }
+                    // Pass user IDs for cache invalidation
+                    onSettle?.(payment.from_user_id, payment.to_user_id);
                 } else {
-                    success(`Settlement of ${formatCurrency(payment.amount, currency)} recorded!`, "Payment Settled");
+                    // On failure, the optimistic state will revert automatically
+                    // because we're in a transition
+                    showError(result.error || "Failed to record settlement");
                 }
-                onSettle?.();
-            } else {
-                showError(result.error || "Failed to record settlement");
+            } catch (error) {
+                console.error("Failed to settle:", error);
+                showError("An unexpected error occurred");
+            } finally {
+                setPendingPaymentKey(null);
             }
-        } catch (error) {
-            console.error("Failed to settle:", error);
-            showError("An unexpected error occurred");
-        } finally {
-            setSettlingPayment(null);
-        }
+        });
     };
+    
+    // Track if a specific payment is being settled (for loading state)
+    const isSettling = (paymentKey: string) => isPending && pendingPaymentKey === paymentKey;
 
     // Separate payments involving current user from others
     const myPayments = payments.filter(
@@ -244,13 +261,13 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                         {myPayments.map((payment) => {
                             const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
                             const isSettled = settledPayments.has(paymentKey);
-                            const isSettling = settlingPayment === paymentKey;
+                            const settlingThis = isSettling(paymentKey);
                             const youOwe = payment.from_user_id === currentUserId;
 
                             return (
                                 <div
                                     key={paymentKey}
-                                    className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${isSettled
+                                    className={`flex items-center justify-between rounded-lg border p-3 transition-all duration-200 ${isSettled
                                         ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
                                         : youOwe
                                             ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
@@ -275,12 +292,14 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                                             {formatCurrency(payment.amount, currency)}
                                         </span>
                                         {isSettled ? (
-                                            <Badge variant="success">Settled</Badge>
+                                            <Badge variant="success" className="animate-in fade-in duration-300">
+                                                ✓ Settled
+                                            </Badge>
                                         ) : youOwe ? (
                                             <Button
                                                 size="sm"
                                                 variant="primary"
-                                                isLoading={isSettling}
+                                                isLoading={settlingThis}
                                                 onClick={() => handleSettle(payment)}
                                             >
                                                 Settle
@@ -289,7 +308,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                                             <Button
                                                 size="sm"
                                                 variant="outline"
-                                                isLoading={isSettling}
+                                                isLoading={settlingThis}
                                                 onClick={() => handleSettle(payment)}
                                             >
                                                 Mark Paid

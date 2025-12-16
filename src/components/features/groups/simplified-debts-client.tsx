@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { SimplifiedDebts } from "./simplified-debts";
+import { onSettlementMutation } from "@/app/(dashboard)/actions";
 import type { Balance } from "@/lib/simplify-debts";
 
 interface ExpenseSplit {
@@ -35,7 +36,9 @@ interface SimplifiedDebtsClientProps {
 export function SimplifiedDebtsClient({ groupId, balances, expenses, currentUserId, currency = "USD" }: SimplifiedDebtsClientProps) {
     const router = useRouter();
 
-    const handleSettle = () => {
+    const handleSettle = async (fromUserId: string, toUserId: string) => {
+        // Invalidate cache for the group and involved users
+        await onSettlementMutation(groupId, fromUserId, toUserId);
         // Refresh the page to get updated balances
         router.refresh();
     };

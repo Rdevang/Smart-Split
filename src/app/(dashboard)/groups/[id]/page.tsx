@@ -12,8 +12,8 @@ import { SimplifiedDebtsClient } from "@/components/features/groups/simplified-d
 import { ShareGroupButton } from "@/components/features/groups/share-group-button";
 import { SettlementHistory } from "@/components/features/groups/settlement-history";
 import { PendingSettlements } from "@/components/features/groups/pending-settlements";
-import { groupsServerService } from "@/services/groups.server";
-import { expensesServerService } from "@/services/expenses.server";
+import { groupsCachedServerService } from "@/services/groups.cached.server";
+import { expensesCachedServerService } from "@/services/expenses.cached.server";
 import { formatCurrency } from "@/lib/currency";
 
 interface GroupPageProps {
@@ -29,11 +29,12 @@ export default async function GroupPage({ params }: GroupPageProps) {
         redirect("/login");
     }
 
+    // Using CACHED services for lightning-fast page loads
     const [group, expensesResult, balances, settlements] = await Promise.all([
-        groupsServerService.getGroup(id),
-        expensesServerService.getExpenses(id),
-        groupsServerService.getGroupBalances(id),
-        groupsServerService.getSettlementsWithNames(id),
+        groupsCachedServerService.getGroup(id),
+        expensesCachedServerService.getExpenses(id),
+        groupsCachedServerService.getGroupBalances(id),
+        groupsCachedServerService.getSettlementsWithNames(id),
     ]);
 
     if (!group) {
@@ -41,7 +42,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
     }
 
     const expenses = expensesResult.data;
-    const isAdmin = await groupsServerService.isUserAdmin(id, user.id);
+    const isAdmin = await groupsCachedServerService.isUserAdmin(id, user.id);
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     const userBalance = balances.find((b) => b.user_id === user.id)?.balance || 0;
     const currency = group.currency || "USD";

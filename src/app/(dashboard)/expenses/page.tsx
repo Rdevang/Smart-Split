@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
-import { expensesServerService } from "@/services/expenses.server";
-import { groupsServerService } from "@/services/groups.server";
+import { expensesCachedServerService } from "@/services/expenses.cached.server";
+import { groupsCachedServerService } from "@/services/groups.cached.server";
 
 export default async function ExpensesPage() {
     const supabase = await createClient();
@@ -16,9 +16,10 @@ export default async function ExpensesPage() {
         redirect("/login");
     }
 
+    // Using CACHED services for fast page loads
     const [groupsResult, expensesResult] = await Promise.all([
-        groupsServerService.getGroups(user.id),
-        expensesServerService.getUserExpenses(user.id, { limit: 20 }),
+        groupsCachedServerService.getGroups(user.id),
+        expensesCachedServerService.getUserExpenses(user.id, { limit: 20 }),
     ]);
 
     const groups = groupsResult.data;

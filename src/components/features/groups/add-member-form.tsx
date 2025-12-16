@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 import { friendsService, type PastMember } from "@/services/friends";
+import { onMemberAdded } from "@/app/(dashboard)/actions";
 
 interface AddMemberFormProps {
     groupId: string;
@@ -79,6 +80,8 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
         if (!result.success) {
             toast.error(result.error || "Failed to add member");
         } else {
+            // Invalidate cache for the group
+            await onMemberAdded(groupId, friend.is_placeholder ? undefined : friend.id);
             toast.success(`${friend.name} added to group!`);
             // Remove from available friends list
             setFriends((prev) => prev.filter((f) => f.id !== friend.id));
@@ -120,6 +123,9 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
             setError(result.error || "Failed to add member");
             toast.error(result.error || "Failed to add member");
         } else {
+            // Invalidate cache for the group
+            await onMemberAdded(groupId);
+            
             if (result.inviteSent) {
                 toast.success("Invitation sent! They will be notified.");
             } else {

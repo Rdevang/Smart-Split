@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { ExpenseForm } from "@/components/features/expenses/expense-form";
-import { groupsServerService } from "@/services/groups.server";
+import { groupsCachedServerService } from "@/services/groups.cached.server";
 
 interface NewExpensePageProps {
     params: Promise<{ id: string }>;
@@ -18,7 +18,8 @@ export default async function NewExpensePage({ params }: NewExpensePageProps) {
         redirect("/login");
     }
 
-    const group = await groupsServerService.getGroup(id);
+    // Using CACHED service for fast page loads
+    const group = await groupsCachedServerService.getGroup(id);
 
     if (!group) {
         notFound();

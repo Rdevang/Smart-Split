@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/features/groups/group-card";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { PendingSettlements } from "@/components/features/groups/pending-settlements";
-import { groupsServerService } from "@/services/groups.server";
-import { expensesServerService } from "@/services/expenses.server";
+import { groupsCachedServerService } from "@/services/groups.cached.server";
+import { expensesCachedServerService } from "@/services/expenses.cached.server";
 import { formatCurrency } from "@/lib/currency";
 
 export default async function DashboardPage() {
@@ -22,19 +22,19 @@ export default async function DashboardPage() {
         redirect("/login");
     }
 
-    // Fetch data in parallel
+    // Fetch data in parallel - using CACHED services for speed
     const [groupsResult, recentExpenses, profile] = await Promise.all([
-        groupsServerService.getGroups(user.id),
-        expensesServerService.getRecentExpenses(user.id, 5),
+        groupsCachedServerService.getGroups(user.id),
+        expensesCachedServerService.getRecentExpenses(user.id, 5),
         supabase.from("profiles").select("full_name, currency").eq("id", user.id).single(),
     ]);
 
     const groups = groupsResult.data;
 
     // Calculate summary stats from ALL group balances (not just recent expenses)
-    // Fetch balances for all groups the user is in
+    // Fetch balances for all groups the user is in - CACHED for performance
     const balancePromises = groups.map((group) =>
-        groupsServerService.getGroupBalances(group.id)
+        groupsCachedServerService.getGroupBalances(group.id)
     );
     const allGroupBalances = await Promise.all(balancePromises);
 

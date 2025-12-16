@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { GroupForm } from "@/components/features/groups/group-form";
 import { GroupQRCode } from "@/components/features/groups/group-qr-code";
-import { groupsServerService } from "@/services/groups.server";
+import { groupsCachedServerService } from "@/services/groups.cached.server";
 
 interface GroupSettingsPageProps {
     params: Promise<{ id: string }>;
@@ -19,14 +19,15 @@ export default async function GroupSettingsPage({ params }: GroupSettingsPagePro
         redirect("/login");
     }
 
-    const group = await groupsServerService.getGroup(id);
+    // Using CACHED service for fast page loads
+    const group = await groupsCachedServerService.getGroup(id);
 
     if (!group) {
         notFound();
     }
 
-    // Check if user is admin
-    const isAdmin = await groupsServerService.isUserAdmin(id, user.id);
+    // Check if user is admin - cached
+    const isAdmin = await groupsCachedServerService.isUserAdmin(id, user.id);
 
     if (!isAdmin) {
         redirect(`/groups/${id}`);
