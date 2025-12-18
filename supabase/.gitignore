@@ -1,8 +1,35 @@
-# Supabase
-.branches
-.temp
+# ============================================
+# Supabase - Git Ignore Configuration
+# ============================================
 
-# dotenvx
+# Local development
+.branches
+.temp/
+
+# Environment files (NEVER commit)
+.env
 .env.keys
 .env.local
 .env.*.local
+
+# Database dumps (contain sensitive data)
+*.dump
+*.sql.backup
+seed-data/
+
+# Supabase CLI cache
+.supabase/
+
+# Docker volumes (local dev)
+volumes/
+
+# Generated files
+.docker/
+
+# Test data
+test-data/
+fixtures/*.json
+
+# Logs
+logs/
+*.log
