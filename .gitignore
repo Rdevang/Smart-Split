@@ -155,6 +155,11 @@ audit-results/
 data-export/
 
 # ============================================
+# DOCUMENTATION (Generated locally)
+# ============================================
+docs/
+
+# ============================================
 # MISC
 # ============================================
 # Package manager locks (keep one, ignore others if not using)
