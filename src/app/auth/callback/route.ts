@@ -1,13 +1,70 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// ============================================
+// SECURITY: OPEN REDIRECT PREVENTION
+// ============================================
+// Whitelist of allowed redirect paths to prevent open redirect attacks.
+// Only internal paths starting with these prefixes are allowed.
+const ALLOWED_REDIRECT_PATHS = [
+    "/dashboard",
+    "/groups",
+    "/expenses",
+    "/settings",
+    "/activity",
+    "/friends",
+    "/reset-password",
+];
+
+/**
+ * Validates that a redirect path is safe (internal only)
+ * Prevents open redirect attacks like: ?next=https://evil.com
+ */
+function validateRedirectPath(path: string): string {
+    // Must start with / and not be a protocol-relative URL (//)
+    if (!path.startsWith("/") || path.startsWith("//")) {
+        return "/dashboard";
+    }
+    
+    // Must not contain protocol (://), prevents javascript: and data: URLs too
+    if (path.includes("://") || path.includes("javascript:") || path.includes("data:")) {
+        return "/dashboard";
+    }
+    
+    // Must start with an allowed path prefix
+    const isAllowed = ALLOWED_REDIRECT_PATHS.some(
+        allowed => path === allowed || path.startsWith(`${allowed}/`) || path.startsWith(`${allowed}?`)
+    );
+    
+    return isAllowed ? path : "/dashboard";
+}
+
 export async function GET(request: Request) {
     const { searchParams, origin } = new URL(request.url);
     const code = searchParams.get("code");
-    const next = searchParams.get("next") ?? "/dashboard";
+    const rawNext = searchParams.get("next") ?? "/dashboard";
+    
+    // SECURITY: Validate redirect path to prevent open redirect attacks
+    const next = validateRedirectPath(rawNext);
 
     if (code) {
         const supabase = await createClient();
+        
+        // ============================================
+        // SECURITY: SESSION FIXATION PREVENTION
+        // ============================================
+        // Supabase's exchangeCodeForSession automatically:
+        // 1. Validates the OAuth state parameter (CSRF protection)
+        // 2. Creates a NEW session (session regeneration)
+        // 3. Sets secure, httpOnly cookies for the new session
+        // 
+        // This prevents session fixation attacks where an attacker
+        // tricks a victim into using a session ID the attacker knows.
+        
+        // Clear any existing session before creating new one
+        // This provides defense-in-depth against session fixation
+        await supabase.auth.signOut({ scope: "local" });
+        
         const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
         if (!error && data.user) {

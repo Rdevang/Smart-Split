@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { getCacheHeaders } from "@/lib/cache-headers";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/cache/health
@@ -63,9 +64,13 @@ export async function GET() {
             });
         }
     } catch (error) {
+        // SECURITY: Log full error internally, return safe message to client
+        logger.error("Cache health check failed", error instanceof Error ? error : new Error(String(error)));
+        
         return NextResponse.json({
             status: "error",
-            message: error instanceof Error ? error.message : "Unknown error",
+            // SECURITY: Don't expose internal error details
+            message: "Cache connection error. Please try again later.",
             caching: false,
             timestamp: new Date().toISOString(),
         }, { 

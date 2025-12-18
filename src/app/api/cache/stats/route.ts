@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { COMPRESSION_THRESHOLD } from "@/lib/compression";
+import { logger } from "@/lib/logger";
 
 // Compressed data marker
 const COMPRESSED_PREFIX = "__GZIP__";
@@ -96,9 +97,15 @@ export async function GET() {
             message: keys.length > 20 ? `Showing first 20 of ${keys.length} keys` : undefined,
         }, { status: 200 });
     } catch (error) {
+        // SECURITY: Log full error internally
+        logger.error("Cache stats failed", error instanceof Error ? error : new Error(String(error)));
+        
         return NextResponse.json({
             configured: true,
-            error: error instanceof Error ? error.message : "Unknown error",
+            // Safe to show more detail in dev-only endpoint
+            error: process.env.NODE_ENV === "development" 
+                ? (error instanceof Error ? error.message : "Unknown error")
+                : "Failed to retrieve cache stats",
         }, { status: 500 });
     }
 }

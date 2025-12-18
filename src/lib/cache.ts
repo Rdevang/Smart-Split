@@ -168,6 +168,37 @@ function addJitter(ttl: number): number {
     return Math.round(ttl + jitter);
 }
 
+// ============================================
+// TIMING ATTACK PROTECTION
+// ============================================
+// 
+// Problem: Cache hits are fast (~1ms), cache misses are slow (~100ms+)
+// Attackers can infer data existence by measuring response times.
+// 
+// Solution: Add minimum response time to normalize timing differences.
+// This is especially important for sensitive queries (user existence, etc.)
+
+/** Default minimum response time in milliseconds */
+const DEFAULT_MIN_RESPONSE_TIME_MS = 50;
+
+/**
+ * Ensure operation takes at least minTime milliseconds
+ * Prevents timing attacks by normalizing response times
+ * 
+ * @param startTime - Performance.now() timestamp when operation started
+ * @param minTime - Minimum time the operation should take (ms)
+ */
+async function enforceMinimumResponseTime(startTime: number, minTime: number): Promise<void> {
+    const elapsed = performance.now() - startTime;
+    const remaining = minTime - elapsed;
+
+    if (remaining > 0) {
+        // Add small random jitter (±10%) to prevent perfect timing analysis
+        const jitteredRemaining = remaining * (0.9 + Math.random() * 0.2);
+        await new Promise(resolve => setTimeout(resolve, jitteredRemaining));
+    }
+}
+
 // Sentinel value to distinguish "cached null" from "cache miss"
 const NULL_SENTINEL = "__NULL__";
 
@@ -297,6 +328,44 @@ export async function cached<T>(
         // FAIL OPEN: On any Redis error, fall back to database
         console.error(`Cache error for ${key}:`, error);
         return fetcher();
+    }
+}
+
+/**
+ * Cache wrapper with TIMING ATTACK PROTECTION
+ * 
+ * Use this for sensitive queries where timing differences could leak information:
+ * - User existence checks
+ * - Permission checks
+ * - Rate limit status
+ * 
+ * Ensures minimum response time to prevent attackers from inferring
+ * data existence through timing analysis.
+ * 
+ * @param key - Cache key
+ * @param fetcher - Function to fetch data if cache miss
+ * @param ttl - Time to live in seconds
+ * @param minResponseTimeMs - Minimum response time in milliseconds (default: 50ms)
+ */
+export async function cachedSensitive<T>(
+    key: string,
+    fetcher: () => Promise<T>,
+    ttl: number = CacheTTL.MEDIUM,
+    minResponseTimeMs: number = DEFAULT_MIN_RESPONSE_TIME_MS
+): Promise<T> {
+    const startTime = performance.now();
+
+    try {
+        const result = await cached(key, fetcher, ttl);
+
+        // Enforce minimum response time to prevent timing attacks
+        await enforceMinimumResponseTime(startTime, minResponseTimeMs);
+
+        return result;
+    } catch (error) {
+        // Still enforce minimum time even on error (prevent error timing leaks)
+        await enforceMinimumResponseTime(startTime, minResponseTimeMs);
+        throw error;
     }
 }
 
@@ -474,13 +543,22 @@ export async function invalidateGroupCache(groupId: string): Promise<void> {
     if (!redis) return;
 
     const keysToInvalidate = [
+        // Group data
         CacheKeys.groupBalances(groupId),
         CacheKeys.groupMembers(groupId),
         CacheKeys.groupDetails(groupId),
+        CacheKeys.groupActivity(groupId),
+        CacheKeys.groupSettlements(groupId),
+
+        // Expenses (including paginated cache key used by cached service)
+        CacheKeys.groupExpenses(groupId),
+        versionedKey("expenses", `group:${groupId}:expenses:page1`),
+        versionedKey("expenses", `group:${groupId}:expense_count`),
+
+        // Analytics
         CacheKeys.groupAnalytics(groupId),
         CacheKeys.groupExpensesByCategory(groupId),
         CacheKeys.groupExpensesTrend(groupId),
-        CacheKeys.groupActivity(groupId),
     ];
 
     try {
@@ -501,6 +579,10 @@ export async function invalidateUserCache(userId: string): Promise<void> {
     const keysToInvalidate = [
         CacheKeys.userDashboard(userId),
         CacheKeys.userGroups(userId),
+        // User expenses cache (used by cached service)
+        versionedKey("expenses", `user:${userId}:expenses:page1`),
+        versionedKey("dashboard", `user:${userId}:recent_expenses:5`),
+        versionedKey("dashboard", `user:${userId}:recent_expenses:10`),
     ];
 
     try {
