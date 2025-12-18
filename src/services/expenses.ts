@@ -1,11 +1,144 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database";
+import { safeUuidList, ValidationSchemas } from "@/lib/validation";
+import { logger, SecurityEvents } from "@/lib/logger";
 
 type Expense = Database["public"]["Tables"]["expenses"]["Row"];
 type ExpenseSplit = Database["public"]["Tables"]["expense_splits"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
 type SplitType = Database["public"]["Enums"]["split_type"];
+
+// ============================================
+// AUTHORIZATION HELPERS (IDOR Prevention)
+// ============================================
+
+/**
+ * Verify user is a member of the specified group
+ * Used for authorization checks before sensitive operations
+ */
+async function isGroupMember(groupId: string, userId: string): Promise<boolean> {
+    const supabase = createClient();
+
+    // Validate inputs
+    if (!ValidationSchemas.uuid.safeParse(groupId).success ||
+        !ValidationSchemas.uuid.safeParse(userId).success) {
+        return false;
+    }
+
+    const { data } = await supabase
+        .from("group_members")
+        .select("id")
+        .eq("group_id", groupId)
+        .eq("user_id", userId)
+        .single();
+
+    return !!data;
+}
+
+/**
+ * Get the group ID for an expense and verify user has access
+ * Returns null if expense doesn't exist or user doesn't have access
+ */
+async function verifyExpenseAccess(
+    expenseId: string,
+    userId: string
+): Promise<{ groupId: string; expense: Expense } | null> {
+    const supabase = createClient();
+
+    // Validate inputs
+    if (!ValidationSchemas.uuid.safeParse(expenseId).success ||
+        !ValidationSchemas.uuid.safeParse(userId).success) {
+        logger.warn("Invalid UUID in expense access check", { expenseId, userId });
+        return null;
+    }
+
+    // Get expense with group_id
+    const { data: expense, error } = await supabase
+        .from("expenses")
+        .select("*")
+        .eq("id", expenseId)
+        .single();
+
+    if (error || !expense) {
+        return null;
+    }
+
+    // Verify user is a member of the group
+    const isMember = await isGroupMember(expense.group_id, userId);
+
+    if (!isMember) {
+        // Log potential IDOR attempt
+        logger.security(
+            SecurityEvents.ACCESS_DENIED,
+            "medium",
+            "blocked",
+            {
+                userId,
+                expenseId,
+                groupId: expense.group_id,
+                action: "expense_access",
+                reason: "not_group_member"
+            }
+        );
+        return null;
+    }
+
+    return { groupId: expense.group_id, expense };
+}
+
+/**
+ * Get the expense ID for a split and verify user has access
+ * Returns null if split doesn't exist or user doesn't have access
+ */
+async function verifySplitAccess(
+    splitId: string,
+    userId: string
+): Promise<{ expenseId: string; groupId: string } | null> {
+    const supabase = createClient();
+
+    // Validate inputs
+    if (!ValidationSchemas.uuid.safeParse(splitId).success ||
+        !ValidationSchemas.uuid.safeParse(userId).success) {
+        return null;
+    }
+
+    // Get split with expense info
+    const { data: split, error } = await supabase
+        .from("expense_splits")
+        .select("expense_id, expense:expenses(group_id)")
+        .eq("id", splitId)
+        .single();
+
+    if (error || !split || !split.expense) {
+        return null;
+    }
+
+    // Type cast through unknown for Supabase join result
+    const expenseData = split.expense as unknown as { group_id: string };
+    const groupId = expenseData.group_id;
+
+    // Verify user is a member of the group
+    const isMember = await isGroupMember(groupId, userId);
+
+    if (!isMember) {
+        logger.security(
+            SecurityEvents.ACCESS_DENIED,
+            "medium",
+            "blocked",
+            {
+                userId,
+                splitId,
+                groupId,
+                action: "split_access",
+                reason: "not_group_member"
+            }
+        );
+        return null;
+    }
+
+    return { expenseId: split.expense_id, groupId };
+}
 
 export interface ExpenseWithDetails extends Expense {
     paid_by_profile: Profile;
@@ -53,7 +186,8 @@ export const expensesService = {
                 )
             `)
             .eq("group_id", groupId)
-            .order("expense_date", { ascending: false });
+            .order("expense_date", { ascending: false })
+            .order("created_at", { ascending: false });
 
         if (error || !expenses) {
             console.error("Error fetching expenses:", error);
@@ -98,15 +232,28 @@ export const expensesService = {
     async getUserExpenses(userId: string, limit = 10): Promise<ExpenseWithDetails[]> {
         const supabase = createClient();
 
+        // SECURITY: Validate userId is a valid UUID before using in query
+        const userIdValidation = ValidationSchemas.uuid.safeParse(userId);
+        if (!userIdValidation.success) {
+            console.error("Invalid user ID format:", userId);
+            return [];
+        }
+        const validUserId = userIdValidation.data;
+
         // Get expenses where user paid or is in a split
         const { data: splitExpenseIds } = await supabase
             .from("expense_splits")
             .select("expense_id")
-            .eq("user_id", userId);
+            .eq("user_id", validUserId);
 
-        const expenseIdsFromSplits = splitExpenseIds?.map((s) => s.expense_id) || [];
+        const rawExpenseIds = splitExpenseIds?.map((s) => s.expense_id) || [];
 
-        const { data: expenses, error } = await supabase
+        // SECURITY: Validate all expense IDs before using in query
+        // This prevents SQL injection via malformed UUIDs
+        const validExpenseIds = safeUuidList(rawExpenseIds);
+
+        // Build query based on what we have
+        let query = supabase
             .from("expenses")
             .select(`
                 *,
@@ -115,9 +262,21 @@ export const expensesService = {
                     *,
                     profile:profiles (*)
                 )
-            `)
-            .or(`paid_by.eq.${userId},id.in.(${expenseIdsFromSplits.join(",")})`)
+            `);
+
+        // SECURITY: Use parameterized query instead of string concatenation
+        // Supabase's .eq() and .in() methods are parameterized and safe
+        if (validExpenseIds.length > 0) {
+            // Use .or() with validated UUIDs only
+            query = query.or(`paid_by.eq.${validUserId},id.in.(${validExpenseIds.join(",")})`);
+        } else {
+            // No splits found, just get expenses user paid for
+            query = query.eq("paid_by", validUserId);
+        }
+
+        const { data: expenses, error } = await query
             .order("expense_date", { ascending: false })
+            .order("created_at", { ascending: false })
             .limit(limit);
 
         if (error || !expenses) {
@@ -216,11 +375,22 @@ export const expensesService = {
         return { expense };
     },
 
+    /**
+     * Update an expense
+     * SECURITY: Verifies user is a member of the group before allowing update
+     */
     async updateExpense(
         expenseId: string,
-        input: UpdateExpenseInput
+        input: UpdateExpenseInput,
+        updatedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
+
+        // SECURITY: Verify user has access to this expense (IDOR prevention)
+        const access = await verifyExpenseAccess(expenseId, updatedBy);
+        if (!access) {
+            return { success: false, error: "Expense not found or access denied" };
+        }
 
         const { error } = await supabase
             .from("expenses")
@@ -234,55 +404,86 @@ export const expensesService = {
             return { success: false, error: error.message };
         }
 
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: updatedBy,
+            group_id: access.groupId,
+            entity_type: "expense",
+            entity_id: expenseId,
+            action: "updated",
+            metadata: {
+                changes: Object.keys(input),
+            },
+        });
+
         return { success: true };
     },
 
+    /**
+     * Soft delete an expense (sets deleted_at timestamp)
+     * Expense can be restored within 30 days before permanent deletion
+     * SECURITY: Verifies user is a member of the group before allowing delete
+     */
     async deleteExpense(
         expenseId: string,
         deletedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
 
-        // Get expense details for activity log
-        const { data: expense } = await supabase
-            .from("expenses")
-            .select("group_id, description, amount")
-            .eq("id", expenseId)
-            .single();
+        // SECURITY: Verify user has access to this expense (IDOR prevention)
+        const access = await verifyExpenseAccess(expenseId, deletedBy);
+        if (!access) {
+            return { success: false, error: "Expense not found or access denied" };
+        }
 
-        // Delete splits first
-        await supabase.from("expense_splits").delete().eq("expense_id", expenseId);
-
-        // Delete expense
-        const { error } = await supabase.from("expenses").delete().eq("id", expenseId);
+        // Use soft delete RPC function
+        const { error } = await supabase.rpc("soft_delete_expense", {
+            expense_uuid: expenseId,
+        });
 
         if (error) {
-            return { success: false, error: error.message };
+            // Fallback to manual soft delete
+            const { error: updateError } = await supabase
+                .from("expenses")
+                .update({ deleted_at: new Date().toISOString() })
+                .eq("id", expenseId);
+
+            if (updateError) {
+                return { success: false, error: updateError.message };
+            }
         }
 
-        // Log activity
-        if (expense) {
-            await supabase.from("activities").insert({
-                user_id: deletedBy,
-                group_id: expense.group_id,
-                entity_type: "expense",
-                entity_id: expenseId,
-                action: "deleted",
-                metadata: {
-                    description: expense.description,
-                    amount: expense.amount,
-                },
-            });
-        }
+        // Log activity (audit trigger will also log this, but keep for backwards compatibility)
+        await supabase.from("activities").insert({
+            user_id: deletedBy,
+            group_id: access.groupId,
+            entity_type: "expense",
+            entity_id: expenseId,
+            action: "deleted",
+            metadata: {
+                description: access.expense.description,
+                amount: access.expense.amount,
+            },
+        });
 
         return { success: true };
     },
 
+    /**
+     * Mark an expense split as settled
+     * SECURITY: Verifies user is a member of the group before allowing settlement
+     */
     async settleExpenseSplit(
         splitId: string,
         settledBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
+
+        // SECURITY: Verify user has access to this split (IDOR prevention)
+        const access = await verifySplitAccess(splitId, settledBy);
+        if (!access) {
+            return { success: false, error: "Split not found or access denied" };
+        }
 
         const { error } = await supabase
             .from("expense_splits")
@@ -295,6 +496,18 @@ export const expensesService = {
         if (error) {
             return { success: false, error: error.message };
         }
+
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: settledBy,
+            group_id: access.groupId,
+            entity_type: "expense_split",
+            entity_id: splitId,
+            action: "settled",
+            metadata: {
+                expense_id: access.expenseId,
+            },
+        });
 
         return { success: true };
     },

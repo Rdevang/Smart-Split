@@ -22,7 +22,7 @@ export const profileService = {
 
         const { data, error } = await supabase
             .from("profiles")
-            .select("*")
+            .select("id, email, full_name, avatar_url, phone, currency")
             .eq("id", userId)
             .single();
 
@@ -66,20 +66,34 @@ export const profileService = {
     async uploadAvatar(userId: string, file: File): Promise<{ url: string | null; error?: string }> {
         const supabase = createClient();
 
-        // Validate file
+        // ============================================
+        // SECURITY: File Validation
+        // ============================================
+        
+        // 1. Check file size (max 2MB)
         const maxSize = 2 * 1024 * 1024; // 2MB
         if (file.size > maxSize) {
             return { url: null, error: "File size must be less than 2MB" };
         }
 
+        // 2. Check MIME type (first layer of defense)
         const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
         if (!allowedTypes.includes(file.type)) {
             return { url: null, error: "File must be an image (JPEG, PNG, GIF, or WebP)" };
         }
 
-        // Generate unique filename
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${userId}/avatar-${Date.now()}.${fileExt}`;
+        // 3. Validate magic bytes (second layer - prevents MIME spoofing)
+        const magicBytesValid = await this.validateImageMagicBytes(file);
+        if (!magicBytesValid) {
+            return { url: null, error: "Invalid image file. File content does not match a valid image format." };
+        }
+
+        // 4. Sanitize filename (prevent path traversal)
+        const safeExtension = this.getSafeExtension(file.type);
+        if (!safeExtension) {
+            return { url: null, error: "Invalid file type" };
+        }
+        const fileName = `${userId}/avatar-${Date.now()}.${safeExtension}`;
 
         // Delete old avatar if exists
         const { data: existingFiles } = await supabase.storage
@@ -163,6 +177,84 @@ export const profileService = {
         });
 
         return { success: true };
+    },
+
+    // ============================================
+    // SECURITY HELPERS
+    // ============================================
+
+    /**
+     * Validate image file by checking magic bytes (file signature)
+     * This prevents MIME type spoofing attacks
+     */
+    async validateImageMagicBytes(file: File): Promise<boolean> {
+        try {
+            // Read first 12 bytes (enough for all signatures)
+            const buffer = await file.slice(0, 12).arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+
+            // JPEG: FF D8 FF
+            if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+                return true;
+            }
+
+            // PNG: 89 50 4E 47 0D 0A 1A 0A
+            if (
+                bytes[0] === 0x89 &&
+                bytes[1] === 0x50 &&
+                bytes[2] === 0x4E &&
+                bytes[3] === 0x47 &&
+                bytes[4] === 0x0D &&
+                bytes[5] === 0x0A &&
+                bytes[6] === 0x1A &&
+                bytes[7] === 0x0A
+            ) {
+                return true;
+            }
+
+            // GIF: 47 49 46 38 (GIF87a or GIF89a)
+            if (
+                bytes[0] === 0x47 &&
+                bytes[1] === 0x49 &&
+                bytes[2] === 0x46 &&
+                bytes[3] === 0x38
+            ) {
+                return true;
+            }
+
+            // WebP: RIFF....WEBP (52 49 46 46 ... 57 45 42 50)
+            if (
+                bytes[0] === 0x52 &&
+                bytes[1] === 0x49 &&
+                bytes[2] === 0x46 &&
+                bytes[3] === 0x46 &&
+                bytes[8] === 0x57 &&
+                bytes[9] === 0x45 &&
+                bytes[10] === 0x42 &&
+                bytes[11] === 0x50
+            ) {
+                return true;
+            }
+
+            return false;
+        } catch {
+            // If we can't read the file, reject it
+            return false;
+        }
+    },
+
+    /**
+     * Get safe file extension based on MIME type
+     * Prevents path traversal via malicious filenames
+     */
+    getSafeExtension(mimeType: string): string | null {
+        const extensionMap: Record<string, string> = {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/gif": "gif",
+            "image/webp": "webp",
+        };
+        return extensionMap[mimeType] || null;
     },
 };
 

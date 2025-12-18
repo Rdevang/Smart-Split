@@ -1,10 +1,90 @@
 import { createClient } from "@/lib/supabase/client";
 import { withLock, LockKeys } from "@/lib/distributed-lock";
 import type { Database } from "@/types/database";
+import { ValidationSchemas, sanitizeForDb, stripHtml } from "@/lib/validation";
+import { checkRateLimit, getClientIP } from "@/lib/rate-limit";
+import { logger, SecurityEvents } from "@/lib/logger";
 
 type Group = Database["public"]["Tables"]["groups"]["Row"];
 type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type MemberRole = Database["public"]["Enums"]["member_role"];
+
+// ============================================
+// AUTHORIZATION HELPERS (IDOR Prevention)
+// ============================================
+
+interface MembershipInfo {
+    isMember: boolean;
+    role: MemberRole | null;
+    isAdmin: boolean;
+}
+
+/**
+ * Verify user is a member of the specified group and get their role
+ * Used for authorization checks before sensitive operations
+ */
+async function getGroupMembership(groupId: string, userId: string): Promise<MembershipInfo> {
+    const supabase = createClient();
+    
+    // Validate inputs
+    if (!ValidationSchemas.uuid.safeParse(groupId).success || 
+        !ValidationSchemas.uuid.safeParse(userId).success) {
+        return { isMember: false, role: null, isAdmin: false };
+    }
+    
+    const { data } = await supabase
+        .from("group_members")
+        .select("role")
+        .eq("group_id", groupId)
+        .eq("user_id", userId)
+        .single();
+    
+    if (!data) {
+        return { isMember: false, role: null, isAdmin: false };
+    }
+    
+    return { 
+        isMember: true, 
+        role: data.role as MemberRole,
+        isAdmin: data.role === "admin"
+    };
+}
+
+/**
+ * Verify user has access to a group
+ * Logs security events for unauthorized access attempts
+ */
+async function verifyGroupAccess(
+    groupId: string, 
+    userId: string, 
+    requiredRole: "member" | "admin" = "member",
+    action: string
+): Promise<{ success: boolean; membership?: MembershipInfo; error?: string }> {
+    const membership = await getGroupMembership(groupId, userId);
+    
+    if (!membership.isMember) {
+        logger.security(
+            SecurityEvents.ACCESS_DENIED,
+            "medium",
+            "blocked",
+            { userId, groupId, action, reason: "not_group_member" }
+        );
+        return { success: false, error: "Group not found or access denied" };
+    }
+    
+    if (requiredRole === "admin" && !membership.isAdmin) {
+        logger.security(
+            SecurityEvents.ACCESS_DENIED,
+            "medium",
+            "blocked",
+            { userId, groupId, action, reason: "not_admin", currentRole: membership.role }
+        );
+        return { success: false, error: "Admin access required" };
+    }
+    
+    return { success: true, membership };
+}
 
 export interface GroupWithMembers extends Group {
     members: (GroupMember & { profile: Profile })[];
@@ -161,11 +241,22 @@ export const groupsService = {
         return { group };
     },
 
+    /**
+     * Update group settings
+     * SECURITY: Requires admin role for the group (IDOR prevention)
+     */
     async updateGroup(
         groupId: string,
-        input: UpdateGroupInput
+        input: UpdateGroupInput,
+        updatedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
+        
+        // SECURITY: Verify user is an admin of this group
+        const accessCheck = await verifyGroupAccess(groupId, updatedBy, "admin", "update_group");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
 
         const { error } = await supabase
             .from("groups")
@@ -178,15 +269,93 @@ export const groupsService = {
         if (error) {
             return { success: false, error: error.message };
         }
+        
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: updatedBy,
+            group_id: groupId,
+            entity_type: "group",
+            entity_id: groupId,
+            action: "updated",
+            metadata: { changes: Object.keys(input) },
+        });
 
         return { success: true };
     },
 
-    async deleteGroup(groupId: string): Promise<{ success: boolean; error?: string }> {
+    /**
+     * Soft delete a group (sets deleted_at timestamp)
+     * Group can be restored within 30 days before permanent deletion
+     * SECURITY: Requires admin role for the group (IDOR prevention)
+     */
+    async deleteGroup(
+        groupId: string, 
+        deletedBy: string
+    ): Promise<{ success: boolean; error?: string }> {
+        const supabase = createClient();
+        
+        // SECURITY: Verify user is an admin of this group
+        const accessCheck = await verifyGroupAccess(groupId, deletedBy, "admin", "delete_group");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
+
+        // Get group name for activity log
+        const { data: group } = await supabase
+            .from("groups")
+            .select("name")
+            .eq("id", groupId)
+            .single();
+
+        // Use soft delete RPC function for atomic operation
+        const { error } = await supabase.rpc("soft_delete_group", {
+            group_uuid: groupId,
+        });
+
+        if (error) {
+            // Fallback to manual soft delete if RPC fails
+            const { error: updateError } = await supabase
+                .from("groups")
+                .update({ deleted_at: new Date().toISOString() })
+                .eq("id", groupId);
+
+            if (updateError) {
+                return { success: false, error: updateError.message };
+            }
+
+            // Also soft delete related records
+            await supabase
+                .from("expenses")
+                .update({ deleted_at: new Date().toISOString() })
+                .eq("group_id", groupId);
+
+            await supabase
+                .from("settlements")
+                .update({ deleted_at: new Date().toISOString() })
+                .eq("group_id", groupId);
+        }
+        
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: deletedBy,
+            group_id: groupId,
+            entity_type: "group",
+            entity_id: groupId,
+            action: "deleted",
+            metadata: { group_name: group?.name },
+        });
+
+        return { success: true };
+    },
+
+    /**
+     * Permanently delete a group (hard delete)
+     * Use with caution - this cannot be undone
+     */
+    async permanentlyDeleteGroup(groupId: string): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
 
-        // Delete in order: expense_splits -> expenses -> group_members -> activities -> group
-        // First get all expenses in this group
+        // Delete in order: expense_splits -> expenses -> settlements -> activities -> group_members -> group
         const { data: expenses } = await supabase
             .from("expenses")
             .select("id")
@@ -224,12 +393,60 @@ export const groupsService = {
         return { success: true };
     },
 
+    /**
+     * Restore a soft-deleted group
+     * SECURITY: Requires admin role (IDOR prevention)
+     */
+    async restoreGroup(
+        groupId: string, 
+        restoredBy: string
+    ): Promise<{ success: boolean; error?: string }> {
+        const supabase = createClient();
+        
+        // SECURITY: Verify user was an admin of this group
+        // Note: We check membership differently for deleted groups
+        const accessCheck = await verifyGroupAccess(groupId, restoredBy, "admin", "restore_group");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
+
+        const { error } = await supabase.rpc("restore_group", {
+            group_uuid: groupId,
+        });
+
+        if (error) {
+            return { success: false, error: error.message };
+        }
+        
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: restoredBy,
+            group_id: groupId,
+            entity_type: "group",
+            entity_id: groupId,
+            action: "restored",
+            metadata: {},
+        });
+
+        return { success: true };
+    },
+
+    /**
+     * Add a member to a group by email
+     * SECURITY: Requires member role at minimum (IDOR prevention)
+     */
     async addMember(
         groupId: string,
         email: string,
         addedBy: string
     ): Promise<{ success: boolean; error?: string; inviteSent?: boolean }> {
         const supabase = createClient();
+        
+        // SECURITY: Verify user is a member of this group
+        const accessCheck = await verifyGroupAccess(groupId, addedBy, "member", "add_member");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
 
         // Find user by email
         const { data: profile, error: profileError } = await supabase
@@ -277,6 +494,10 @@ export const groupsService = {
         return { success: true, inviteSent: true };
     },
 
+    /**
+     * Add a placeholder member to a group
+     * SECURITY: Requires member role at minimum (IDOR prevention)
+     */
     async addPlaceholderMember(
         groupId: string,
         name: string,
@@ -284,6 +505,12 @@ export const groupsService = {
         addedBy: string
     ): Promise<{ success: boolean; error?: string; placeholderId?: string }> {
         const supabase = createClient();
+        
+        // SECURITY: Verify user is a member of this group
+        const accessCheck = await verifyGroupAccess(groupId, addedBy, "member", "add_placeholder_member");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
 
         // If email provided, check if user already exists
         if (email) {
@@ -357,12 +584,29 @@ export const groupsService = {
         return { success: true, placeholderId: placeholder.id };
     },
 
+    /**
+     * Remove a placeholder member from a group
+     * SECURITY: Requires admin role OR user removing themselves (IDOR prevention)
+     */
     async removePlaceholderMember(
         groupId: string,
         placeholderId: string,
         removedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
+        
+        // SECURITY: Verify user is an admin of this group
+        const accessCheck = await verifyGroupAccess(groupId, removedBy, "admin", "remove_placeholder_member");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
+
+        // Get placeholder name for activity log
+        const { data: placeholder } = await supabase
+            .from("placeholder_members")
+            .select("name")
+            .eq("id", placeholderId)
+            .single();
 
         // Delete from group_members first (cascade will handle this, but explicit is clearer)
         const { error: memberError } = await supabase
@@ -384,16 +628,47 @@ export const groupsService = {
         if (error) {
             return { success: false, error: error.message };
         }
+        
+        // Log activity
+        await supabase.from("activities").insert({
+            user_id: removedBy,
+            group_id: groupId,
+            entity_type: "member",
+            entity_id: placeholderId,
+            action: "removed",
+            metadata: { member_name: placeholder?.name, is_placeholder: true },
+        });
 
         return { success: true };
     },
 
+    /**
+     * Remove a member from a group
+     * SECURITY: Requires admin role OR user removing themselves (IDOR prevention)
+     */
     async removeMember(
         groupId: string,
         userId: string,
         removedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
+        
+        // SECURITY: Verify access - admin can remove anyone, user can remove themselves
+        const accessCheck = await verifyGroupAccess(groupId, removedBy, "member", "remove_member");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
+        
+        // Only admins can remove other members
+        if (userId !== removedBy && !accessCheck.membership?.isAdmin) {
+            logger.security(
+                SecurityEvents.ACCESS_DENIED,
+                "medium",
+                "blocked",
+                { userId: removedBy, groupId, action: "remove_other_member", targetUser: userId, reason: "not_admin" }
+            );
+            return { success: false, error: "Only admins can remove other members" };
+        }
 
         // Check if user is the only admin
         const { data: admins } = await supabase
@@ -405,6 +680,13 @@ export const groupsService = {
         if (admins && admins.length === 1 && admins[0].user_id === userId) {
             return { success: false, error: "Cannot remove the only admin. Transfer ownership first." };
         }
+
+        // Get member name for activity log
+        const { data: member } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", userId)
+            .single();
 
         const { error } = await supabase
             .from("group_members")
@@ -480,9 +762,9 @@ export const groupsService = {
             );
         } catch (error) {
             if (error instanceof Error && error.message.includes("being processed")) {
-                return { 
-                    success: false, 
-                    error: "This settlement is already being processed. Please wait and try again." 
+                return {
+                    success: false,
+                    error: "This settlement is already being processed. Please wait and try again."
                 };
             }
             throw error;
@@ -500,6 +782,12 @@ export const groupsService = {
         toIsPlaceholder: boolean = false
     ): Promise<{ success: boolean; error?: string; pending?: boolean; message?: string }> {
         const supabase = createClient();
+        
+        // SECURITY: Verify user is a member of this group (IDOR prevention)
+        const accessCheck = await verifyGroupAccess(groupId, recordedBy, "member", "record_settlement");
+        if (!accessCheck.success) {
+            return { success: false, error: accessCheck.error };
+        }
 
         // Determine if approval is needed:
         // Auto-approve if:
@@ -618,7 +906,7 @@ export const groupsService = {
 
         const { data, error } = await supabase
             .from("settlements")
-            .select("*")
+            .select("id, from_user, to_user, amount, settled_at")
             .eq("group_id", groupId)
             .order("settled_at", { ascending: false });
 

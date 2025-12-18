@@ -17,8 +17,9 @@ This document covers the system design patterns implemented in Smart Split for p
 7. [CDN Graceful Degradation](#7-cdn-graceful-degradation-stale-if-error)
 8. [Cache Versioning](#8-cache-versioning-safe-deployments)
 9. [Distributed Locking](#6-distributed-locking-race-condition-prevention)
-10. [Testing & Monitoring](#testing--monitoring)
-11. [Configuration](#configuration)
+10. [Bundle Analysis](#9-bundle-analysis-tree-shaking)
+11. [Testing & Monitoring](#testing--monitoring)
+12. [Configuration](#configuration)
 
 ---
 
@@ -1094,6 +1095,111 @@ cached("user:456:profile", fetcher);
 
 ---
 
+## 9. Bundle Analysis (Tree Shaking)
+
+### Purpose
+Identify oversized dependencies and optimize JavaScript bundle size for faster page loads.
+
+### Setup
+
+```bash
+npm install @next/bundle-analyzer --save-dev
+```
+
+### Configuration
+
+```typescript
+// next.config.ts
+import bundleAnalyzer from "@next/bundle-analyzer";
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+});
+
+export default withBundleAnalyzer(nextConfig);
+```
+
+### NPM Scripts
+
+```bash
+npm run analyze          # Analyze both client and server bundles
+npm run analyze:server   # Server bundle only
+npm run analyze:browser  # Browser bundle only
+```
+
+### Running Analysis
+
+```bash
+npm run analyze
+```
+
+This generates interactive HTML reports in `.next/analyze/`:
+- `client.html` - Browser bundles
+- `nodejs.html` - Server bundles
+
+### What to Look For
+
+| Red Flag | Problem | Solution |
+|----------|---------|----------|
+| Large `lodash` | Importing entire library | Use `lodash-es` or specific imports: `import debounce from 'lodash/debounce'` |
+| Heavy charts on homepage | Shipping unused code | Use `next/dynamic` with `ssr: false` |
+| Duplicate dependencies | Same code bundled twice | Check `npm ls <package>` for version conflicts |
+| Large icons | Full icon library | Import specific icons: `import { Menu } from 'lucide-react'` |
+| Moment.js | 300KB+ with locales | Use `date-fns` (tree-shakeable) ✅ We already do this |
+
+### Lazy Loading Heavy Components
+
+```typescript
+// ❌ BAD: Charts loaded on every page
+import { BarChart } from 'recharts';
+
+// ✅ GOOD: Charts loaded only when needed
+import dynamic from 'next/dynamic';
+
+const BarChart = dynamic(
+  () => import('recharts').then(mod => mod.BarChart),
+  { 
+    ssr: false,
+    loading: () => <Spinner />
+  }
+);
+```
+
+### Current Bundle Status
+
+| Package | Size | Status | Notes |
+|---------|------|--------|-------|
+| `recharts` | ~200KB | ⚠️ Large | Only loaded on analytics page |
+| `@supabase/supabase-js` | ~50KB | ✅ OK | Core dependency |
+| `date-fns` | ~15KB | ✅ OK | Tree-shakeable |
+| `lucide-react` | ~5KB | ✅ OK | Individual icon imports |
+| `zod` | ~15KB | ✅ OK | Validation library |
+| `react-hook-form` | ~25KB | ✅ OK | Form handling |
+
+### Optimization Checklist
+
+- [ ] Run `npm run analyze` after adding new dependencies
+- [ ] Use dynamic imports for heavy components not needed on initial load
+- [ ] Check for duplicate dependencies with `npm ls`
+- [ ] Prefer smaller alternatives (date-fns over moment, etc.)
+- [ ] Import only what you need from large libraries
+
+### Example Report
+
+```
+Route (app)                    Size     First Load JS
+─────────────────────────────────────────────────────
+├ ○ /                         5.2 kB        89 kB
+├ ○ /dashboard               12.3 kB        96 kB
+├ ƒ /groups/[id]              8.1 kB        92 kB
+├ ƒ /groups/[id]/analytics   45.2 kB       129 kB  ← recharts loaded here
+└ ○ /login                    3.4 kB        87 kB
+
++ First Load JS shared by all: 84 kB
+```
+
+---
+
 ## Summary
 
 | Feature | Problem Solved | Key Benefit |
@@ -1108,6 +1214,7 @@ cached("user:456:profile", fetcher);
 | **CDN Stale-If-Error** | Total backend outage | White screen → stale page |
 | **Distributed Locks** | Race conditions | Data consistency |
 | **Cache Versioning** | Corrupted cache on deploy | Safe deployments |
+| **Bundle Analysis** | Bloated JS bundles | Faster page loads |
 
 ### Design Principles Applied
 

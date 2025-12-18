@@ -1017,6 +1017,7 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - [x] Optimistic UI → React 19 useOptimistic for instant feedback
 - [x] Large data compression → Gzip for cache entries >1KB
 - [x] CDN graceful degradation → Cache-Control stale-if-error for total outages
+- [x] Bundle analysis → @next/bundle-analyzer for tree-shaking optimization
 
 ---
 
@@ -1057,6 +1058,7 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.vercel.app
 - Compression for cache - ~80% Redis memory/bandwidth savings
 - Hybrid caching (Redis + Next.js tags) - best of both worlds
 - CDN stale-if-error - serves cached content during total backend outage
+- Bundle analyzer - visual map of JS bundles for optimization
 
 ---
 

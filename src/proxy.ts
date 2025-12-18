@@ -1,12 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { checkRateLimit, getClientIP, createRateLimitHeaders } from "@/lib/rate-limit";
+import { analyzeRequest } from "@/lib/security-monitor";
+import { logger, generateRequestId } from "@/lib/logger";
 
 // ============================================
 // RATE LIMIT CONFIGURATION BY PATH
 // ============================================
 
-type RateLimitType = "api" | "auth" | "sensitive" | "public" | "expensive";
+type RateLimitType = "api" | "auth" | "sensitive" | "public" | "expensive" | "invite";
 
 interface PathRateLimit {
     pattern: RegExp;
@@ -14,7 +16,16 @@ interface PathRateLimit {
 }
 
 // Define rate limits for different path patterns
+// ORDER MATTERS: More specific patterns should come first
 const pathRateLimits: PathRateLimit[] = [
+    // ============================================
+    // SECURITY: Strict limits for brute-forceable endpoints
+    // ============================================
+    
+    // Invite code endpoints - VERY strict to prevent brute force
+    { pattern: /^\/api\/groups\/preview/, type: "invite" },  // Invite code validation
+    { pattern: /^\/groups\/join/, type: "invite" },          // Join group page
+    
     // Auth endpoints - strict limits (brute force protection)
     { pattern: /^\/login/, type: "auth" },
     { pattern: /^\/register/, type: "auth" },
@@ -24,6 +35,10 @@ const pathRateLimits: PathRateLimit[] = [
     // Sensitive operations
     { pattern: /^\/forgot-password/, type: "sensitive" },
     { pattern: /^\/reset-password/, type: "sensitive" },
+    
+    // ============================================
+    // Standard limits
+    // ============================================
     
     // Public endpoints
     { pattern: /^\/feedback/, type: "public" },
@@ -55,8 +70,10 @@ function getRateLimitType(pathname: string): RateLimitType {
 
 export async function proxy(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
+    const requestId = generateRequestId();
+    const startTime = Date.now();
     
-    // Skip rate limiting for static assets
+    // Skip rate limiting and security analysis for static assets
     if (
         pathname.startsWith("/_next/") ||
         pathname.startsWith("/favicon") ||
@@ -67,6 +84,54 @@ export async function proxy(request: NextRequest) {
 
     // Get client identifier (IP address)
     const clientIP = getClientIP(request);
+    const userAgent = request.headers.get("user-agent");
+    
+    // ============================================
+    // SECURITY ANALYSIS
+    // ============================================
+    
+    // Only analyze non-static routes and API routes for performance
+    const shouldAnalyze = pathname.startsWith("/api/") || 
+                          pathname.startsWith("/login") || 
+                          pathname.startsWith("/register") ||
+                          pathname.startsWith("/groups/join");
+    
+    if (shouldAnalyze) {
+        const analysis = await analyzeRequest({
+            ipAddress: clientIP,
+            userAgent,
+            path: pathname,
+            method: request.method,
+        });
+        
+        // Block if suspicious and should block
+        if (analysis.shouldBlock) {
+            logger.warn(`Request blocked: ${analysis.reasons.join(", ")}`, {
+                requestId,
+                path: pathname,
+                ip: clientIP,
+            });
+            
+            return new NextResponse(
+                JSON.stringify({
+                    error: "Request Blocked",
+                    message: "Your request has been blocked for security reasons.",
+                    requestId,
+                }),
+                {
+                    status: 403,
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-Request-Id": requestId,
+                    },
+                }
+            );
+        }
+    }
+    
+    // ============================================
+    // RATE LIMITING
+    // ============================================
     
     // Determine rate limit type based on path
     const rateLimitType = getRateLimitType(pathname);
@@ -79,30 +144,55 @@ export async function proxy(request: NextRequest) {
 
     // If rate limited, return 429 Too Many Requests
     if (!rateLimitResult.success) {
+        logger.warn(`Rate limit exceeded: ${pathname}`, {
+            requestId,
+            type: rateLimitType,
+            ip: clientIP,
+        });
+        
         return new NextResponse(
             JSON.stringify({
                 error: "Too Many Requests",
                 message: `Rate limit exceeded. Please try again in ${rateLimitResult.retryAfter} seconds.`,
                 retryAfter: rateLimitResult.retryAfter,
+                requestId,
             }),
             {
                 status: 429,
                 headers: {
                     "Content-Type": "application/json",
+                    "X-Request-Id": requestId,
                     ...createRateLimitHeaders(rateLimitResult),
                 },
             }
         );
     }
 
+    // ============================================
+    // CONTINUE REQUEST
+    // ============================================
+    
     // Continue with Supabase session handling
     const response = await updateSession(request);
     
-    // Add rate limit headers to response
+    // Add headers to response
     const rateLimitHeaders = createRateLimitHeaders(rateLimitResult);
     Object.entries(rateLimitHeaders).forEach(([key, value]) => {
         response.headers.set(key, value as string);
     });
+    response.headers.set("X-Request-Id", requestId);
+    
+    // Log request (only for API routes to avoid noise)
+    if (pathname.startsWith("/api/")) {
+        const duration = Date.now() - startTime;
+        logger.request(
+            request.method,
+            pathname,
+            response.status,
+            duration,
+            { requestId, ip: clientIP }
+        );
+    }
 
     return response;
 }

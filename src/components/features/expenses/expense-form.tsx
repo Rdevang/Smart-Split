@@ -384,7 +384,7 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                                                     alt={memberName}
                                                     width={32}
                                                     height={32}
-                                                    className="rounded-full"
+                                                    className="h-8 w-8 rounded-full object-cover"
                                                     unoptimized
                                                 />
                                             ) : (

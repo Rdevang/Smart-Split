@@ -95,7 +95,12 @@ export function NotificationBell({ userId }: NotificationBellProps) {
             setUnreadCount((prev) => Math.max(0, prev - 1));
         }
         
-        if (notification.action_url) {
+        // SECURITY: Only navigate to internal paths (starting with /)
+        // This prevents potential injection if action_url is compromised
+        if (notification.action_url && 
+            notification.action_url.startsWith("/") && 
+            !notification.action_url.startsWith("//") &&
+            !notification.action_url.includes("://")) {
             router.push(notification.action_url);
             setIsOpen(false);
         }

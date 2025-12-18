@@ -49,15 +49,24 @@ export async function GET() {
     }
     
     const responseTime = Date.now() - startTime;
+    const isProduction = process.env.NODE_ENV === "production";
     
-    return NextResponse.json({
+    // SECURITY: Don't expose version and environment info in production
+    // This prevents attackers from targeting known vulnerabilities
+    const responseBody: Record<string, unknown> = {
         status,
-        version: process.env.npm_package_version || "1.0.0",
-        environment: process.env.NODE_ENV || "development",
         checks,
         responseTime: `${responseTime}ms`,
         timestamp: new Date().toISOString(),
-    }, {
+    };
+    
+    // Only expose version/environment in non-production for debugging
+    if (!isProduction) {
+        responseBody.version = process.env.npm_package_version || "1.0.0";
+        responseBody.environment = process.env.NODE_ENV || "development";
+    }
+    
+    return NextResponse.json(responseBody, {
         status: httpStatus,
         headers: getCacheHeaders("public-dynamic"),
     });

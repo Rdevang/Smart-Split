@@ -111,6 +111,7 @@ export const expensesServerService = {
             `, { count: "exact" })
             .eq("group_id", groupId)
             .order("expense_date", { ascending: false })
+            .order("created_at", { ascending: false })
             .range(offset, offset + limit - 1);
 
         if (error || !expenses) {
@@ -186,6 +187,7 @@ export const expensesServerService = {
             `, { count: "exact" })
             .eq("paid_by", userId)
             .order("expense_date", { ascending: false })
+            .order("created_at", { ascending: false })
             .range(offset, offset + limit - 1);
 
         if (error || !expenses) {

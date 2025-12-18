@@ -211,7 +211,7 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
                                                 alt={friend.name}
                                                 width={28}
                                                 height={28}
-                                                className="rounded-full"
+                                                className="h-7 w-7 rounded-full object-cover"
                                                 unoptimized
                                             />
                                         ) : (

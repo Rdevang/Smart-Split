@@ -109,13 +109,17 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
                 toast.success(`Group "${data.name}" created!`);
                 router.push(`/groups/${result.group?.id}`);
             } else if (initialData?.id) {
-                const result = await groupsService.updateGroup(initialData.id, {
-                    name: data.name,
-                    description: data.description,
-                    category: data.category,
-                    currency: data.currency,
-                    simplify_debts: data.simplify_debts,
-                });
+                const result = await groupsService.updateGroup(
+                    initialData.id,
+                    {
+                        name: data.name,
+                        description: data.description,
+                        category: data.category,
+                        currency: data.currency,
+                        simplify_debts: data.simplify_debts,
+                    },
+                    userId // SECURITY: Pass userId for authorization check
+                );
 
                 if (!result.success) {
                     setError(result.error || "Failed to update group");

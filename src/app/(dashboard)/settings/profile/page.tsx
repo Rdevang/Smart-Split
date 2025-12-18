@@ -10,10 +10,10 @@ export default async function ProfileSettingsPage() {
         return null;
     }
 
-    // Fetch profile from database
+    // Fetch profile from database (only fields we need)
     const { data: profile } = await supabase
         .from("profiles")
-        .select("*")
+        .select("full_name, avatar_url, phone, currency")
         .eq("id", authUser.id)
         .single();
 

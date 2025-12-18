@@ -14,33 +14,142 @@ export const RateLimitConfig = {
     api: {
         requests: 100,      // 100 requests
         window: "1 m",      // per minute
+        windowMs: 60000,    // 1 minute in ms (for in-memory fallback)
     },
     // Authentication attempts (login, register)
     auth: {
         requests: 10,       // 10 attempts
         window: "15 m",     // per 15 minutes (prevent brute force)
+        windowMs: 900000,   // 15 minutes in ms
     },
     // Sensitive operations (password reset, etc.)
     sensitive: {
         requests: 5,        // 5 requests
         window: "1 h",      // per hour
+        windowMs: 3600000,  // 1 hour in ms
     },
     // Public endpoints (feedback form, etc.)
     public: {
         requests: 20,       // 20 requests
         window: "1 m",      // per minute
+        windowMs: 60000,    // 1 minute in ms
     },
     // Strict limit for expensive operations (analytics, exports)
     expensive: {
         requests: 10,       // 10 requests  
         window: "1 m",      // per minute
+        windowMs: 60000,    // 1 minute in ms
+    },
+    // Invite code attempts - very strict to prevent brute force
+    invite: {
+        requests: 10,       // 10 attempts
+        window: "1 h",      // per hour
+        windowMs: 3600000,  // 1 hour in ms
+    },
+    // Financial operations (settlements) - strict to prevent abuse
+    financial: {
+        requests: 20,       // 20 settlements
+        window: "1 h",      // per hour
+        windowMs: 3600000,  // 1 hour in ms
+    },
+    // Critical write operations (create expense, group)
+    write: {
+        requests: 50,       // 50 write operations
+        window: "1 h",      // per hour
+        windowMs: 3600000,  // 1 hour in ms
     },
 } as const;
 
 type RateLimitType = keyof typeof RateLimitConfig;
 
 // ============================================
-// RATE LIMITER INSTANCES
+// IN-MEMORY FALLBACK RATE LIMITER
+// ============================================
+// Used when Redis is unavailable - NEVER fail open for security
+
+interface InMemoryEntry {
+    count: number;
+    resetAt: number;
+}
+
+// In-memory store for fallback rate limiting
+// Note: This doesn't work across multiple serverless instances, but it's
+// better than nothing when Redis is down
+const inMemoryStore = new Map<string, InMemoryEntry>();
+
+// Clean up expired entries periodically (every 5 minutes)
+const CLEANUP_INTERVAL = 5 * 60 * 1000;
+let lastCleanup = Date.now();
+
+function cleanupExpiredEntries(): void {
+    const now = Date.now();
+    if (now - lastCleanup < CLEANUP_INTERVAL) return;
+
+    lastCleanup = now;
+    for (const [key, entry] of inMemoryStore.entries()) {
+        if (entry.resetAt < now) {
+            inMemoryStore.delete(key);
+        }
+    }
+}
+
+/**
+ * In-memory rate limit check (fallback when Redis fails)
+ * IMPORTANT: This doesn't fail open - it enforces limits locally
+ */
+function checkInMemoryRateLimit(
+    identifier: string,
+    type: RateLimitType
+): RateLimitResult {
+    cleanupExpiredEntries();
+
+    const config = RateLimitConfig[type];
+    const key = `${type}:${identifier}`;
+    const now = Date.now();
+
+    let entry = inMemoryStore.get(key);
+
+    // If no entry or expired, create new one
+    if (!entry || entry.resetAt < now) {
+        entry = {
+            count: 1,
+            resetAt: now + config.windowMs,
+        };
+        inMemoryStore.set(key, entry);
+
+        return {
+            success: true,
+            limit: config.requests,
+            remaining: config.requests - 1,
+            reset: entry.resetAt,
+        };
+    }
+
+    // Increment count
+    entry.count++;
+
+    // Check if over limit
+    if (entry.count > config.requests) {
+        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        return {
+            success: false,
+            limit: config.requests,
+            remaining: 0,
+            reset: entry.resetAt,
+            retryAfter,
+        };
+    }
+
+    return {
+        success: true,
+        limit: config.requests,
+        remaining: config.requests - entry.count,
+        reset: entry.resetAt,
+    };
+}
+
+// ============================================
+// REDIS RATE LIMITER INSTANCES
 // ============================================
 
 // Cache rate limiter instances
@@ -95,6 +204,8 @@ export interface RateLimitResult {
 /**
  * Check if request should be rate limited
  * 
+ * SECURITY: Never fails open. Uses in-memory fallback when Redis is unavailable.
+ * 
  * @param identifier - Unique identifier (IP, user ID, etc.)
  * @param type - Type of rate limit to apply
  * @returns Rate limit result with success status and metadata
@@ -105,15 +216,9 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
     const limiter = getRateLimiter(type);
 
-    // If rate limiting is not configured, allow all requests
+    // If Redis not configured, use in-memory fallback (NOT fail open!)
     if (!limiter) {
-        const config = RateLimitConfig[type];
-        return {
-            success: true,
-            limit: config.requests,
-            remaining: config.requests,
-            reset: Date.now() + 60000,
-        };
+        return checkInMemoryRateLimit(identifier, type);
     }
 
     try {
@@ -127,15 +232,9 @@ export async function checkRateLimit(
             retryAfter: result.success ? undefined : Math.ceil((result.reset - Date.now()) / 1000),
         };
     } catch (error) {
-        // On error, fail open (allow the request)
-        console.error("Rate limit check failed:", error);
-        const config = RateLimitConfig[type];
-        return {
-            success: true,
-            limit: config.requests,
-            remaining: config.requests,
-            reset: Date.now() + 60000,
-        };
+        // SECURITY FIX: On Redis error, use in-memory fallback instead of failing open
+        console.error("Redis rate limit failed, using in-memory fallback:", error);
+        return checkInMemoryRateLimit(identifier, type);
     }
 }
 

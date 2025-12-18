@@ -3,8 +3,43 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { 
+    trackFailedLogin, 
+    clearFailedLogins, 
+    isAccountLocked 
+} from "@/lib/security-monitor";
+import { logger, SecurityEvents } from "@/lib/logger";
+import { validateCsrfToken } from "@/lib/csrf";
+import { getGenericAuthError } from "@/lib/auth-errors";
+
+/**
+ * Validates CSRF token from form data
+ * Returns error message if invalid, null if valid
+ */
+async function checkCsrf(formData: FormData): Promise<string | null> {
+    const csrfToken = formData.get("csrf_token") as string | null;
+    const validation = await validateCsrfToken(csrfToken);
+    
+    if (!validation.valid) {
+        logger.security(
+            SecurityEvents.CSRF_VIOLATION,
+            "high",
+            "blocked",
+            { error: validation.error }
+        );
+        return validation.error || "Security validation failed. Please refresh the page.";
+    }
+    
+    return null;
+}
 
 export async function login(formData: FormData) {
+    // CSRF Protection
+    const csrfError = await checkCsrf(formData);
+    if (csrfError) {
+        return { error: csrfError };
+    }
+
     const supabase = await createClient();
 
     const data = {
@@ -12,17 +47,78 @@ export async function login(formData: FormData) {
         password: formData.get("password") as string,
     };
 
+    // Check if account is locked before attempting login
+    const lockStatus = await isAccountLocked(data.email);
+    if (!lockStatus.allowed) {
+        const remainingMinutes = lockStatus.lockoutEndsAt 
+            ? Math.ceil((lockStatus.lockoutEndsAt.getTime() - Date.now()) / 60000)
+            : 30;
+        return { 
+            error: `Account temporarily locked due to too many failed attempts. Please try again in ${remainingMinutes} minutes.` 
+        };
+    }
+
     const { error } = await supabase.auth.signInWithPassword(data);
 
     if (error) {
-        return { error: error.message };
+        // Track failed login attempt
+        const result = await trackFailedLogin(data.email);
+        
+        if (!result.allowed) {
+            logger.security(
+                SecurityEvents.LOGIN_FAILURE,
+                "high",
+                "blocked",
+                { email: data.email, reason: "account_locked" }
+            );
+            return { 
+                error: "Account locked due to too many failed attempts. Please try again later." 
+            };
+        }
+        
+        // Log the failed attempt with original error (for internal debugging)
+        logger.security(
+            SecurityEvents.LOGIN_FAILURE,
+            "medium",
+            "failure",
+            { email: data.email, originalError: error.message }
+        );
+        
+        // Return GENERIC error to prevent user enumeration
+        // Don't reveal whether email exists or password is wrong
+        const attemptsMsg = result.remainingAttempts 
+            ? ` (${result.remainingAttempts} attempts remaining)`
+            : "";
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "login",
+                context: { email: data.email }
+            }) + attemptsMsg 
+        };
     }
+
+    // Clear failed login attempts on success
+    await clearFailedLogins(data.email);
+    
+    logger.security(
+        SecurityEvents.LOGIN_SUCCESS,
+        "low",
+        "success",
+        { email: data.email }
+    );
 
     revalidatePath("/", "layout");
     redirect("/dashboard");
 }
 
 export async function register(formData: FormData) {
+    // CSRF Protection
+    const csrfError = await checkCsrf(formData);
+    if (csrfError) {
+        return { error: csrfError };
+    }
+
     const supabase = await createClient();
 
     const email = formData.get("email") as string;
@@ -46,7 +142,22 @@ export async function register(formData: FormData) {
     });
 
     if (error) {
-        return { error: error.message };
+        // Log the actual error internally
+        logger.security(
+            SecurityEvents.ACCOUNT_CREATION_ATTEMPT,
+            "low",
+            "failure",
+            { email, originalError: error.message }
+        );
+        
+        // Return GENERIC error - don't reveal if email already exists
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "register",
+                context: { email }
+            }) 
+        };
     }
 
     // Check if email confirmation is required
@@ -63,7 +174,21 @@ export async function register(formData: FormData) {
 
 export async function signOut() {
     const supabase = await createClient();
+    
+    // Get user before signing out for logging
+    const { data: { user } } = await supabase.auth.getUser();
+    
     await supabase.auth.signOut();
+    
+    if (user) {
+        logger.security(
+            SecurityEvents.LOGOUT,
+            "low",
+            "success",
+            { userId: user.id }
+        );
+    }
+    
     revalidatePath("/", "layout");
     redirect("/");
 }
@@ -84,7 +209,19 @@ export async function signInWithGoogle() {
     });
 
     if (error) {
-        return { error: error.message };
+        logger.security(
+            SecurityEvents.OAUTH_ATTEMPT,
+            "low",
+            "failure",
+            { provider: "google", originalError: error.message }
+        );
+        // Generic OAuth error
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "oauth" 
+            }) 
+        };
     }
 
     if (data.url) {
@@ -108,7 +245,19 @@ export async function signInWithGithub() {
     });
 
     if (error) {
-        return { error: error.message };
+        logger.security(
+            SecurityEvents.OAUTH_ATTEMPT,
+            "low",
+            "failure",
+            { provider: "github", originalError: error.message }
+        );
+        // Generic OAuth error
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "oauth" 
+            }) 
+        };
     }
 
     if (data.url) {
@@ -117,6 +266,12 @@ export async function signInWithGithub() {
 }
 
 export async function forgotPassword(formData: FormData) {
+    // CSRF Protection
+    const csrfError = await checkCsrf(formData);
+    if (csrfError) {
+        return { error: csrfError };
+    }
+
     const supabase = await createClient();
 
     const email = formData.get("email") as string;
@@ -130,24 +285,56 @@ export async function forgotPassword(formData: FormData) {
         redirectTo: `${siteUrl}/auth/callback?next=/reset-password`,
     });
 
-    if (error) {
-        return { error: error.message };
-    }
+    // Log the request (always, even on error for security monitoring)
+    logger.security(
+        SecurityEvents.PASSWORD_RESET_REQUEST,
+        "medium",
+        error ? "failure" : "success",
+        { email, hasError: !!error }
+    );
 
-    return { success: true };
+    // ALWAYS return success message to prevent email enumeration
+    // This is intentional security behavior
+    return { 
+        success: true,
+        message: "If an account exists with this email, you will receive a password reset link."
+    };
 }
 
 export async function resetPassword(formData: FormData) {
+    // CSRF Protection
+    const csrfError = await checkCsrf(formData);
+    if (csrfError) {
+        return { error: csrfError };
+    }
+
     const supabase = await createClient();
 
     const password = formData.get("password") as string;
+    
+    // Get current user for logging
+    const { data: { user } } = await supabase.auth.getUser();
 
     const { error } = await supabase.auth.updateUser({
         password,
     });
 
+    // Log the password change
+    logger.security(
+        SecurityEvents.PASSWORD_CHANGE,
+        "high",
+        error ? "failure" : "success",
+        { userId: user?.id }
+    );
+
     if (error) {
-        return { error: error.message };
+        // Generic error for password reset
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "generic" 
+            }) 
+        };
     }
 
     revalidatePath("/", "layout");
@@ -156,6 +343,12 @@ export async function resetPassword(formData: FormData) {
 
 // Phone Authentication
 export async function sendPhoneOTP(formData: FormData) {
+    // CSRF Protection
+    const csrfError = await checkCsrf(formData);
+    if (csrfError) {
+        return { error: csrfError };
+    }
+
     const supabase = await createClient();
 
     const phone = formData.get("phone") as string;
@@ -166,13 +359,27 @@ export async function sendPhoneOTP(formData: FormData) {
     });
 
     if (error) {
-        return { error: error.message };
+        logger.warn("Phone OTP send failed", { phone, error: error.message });
+        // Generic error - don't reveal if phone exists
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "otp",
+                context: { phone }
+            }) 
+        };
     }
 
     return { success: true };
 }
 
 export async function verifyPhoneOTP(formData: FormData) {
+    // CSRF Protection
+    const csrfError = await checkCsrf(formData);
+    if (csrfError) {
+        return { error: csrfError };
+    }
+
     const supabase = await createClient();
 
     const phone = formData.get("phone") as string;
@@ -185,7 +392,14 @@ export async function verifyPhoneOTP(formData: FormData) {
     });
 
     if (error) {
-        return { error: error.message };
+        logger.warn("Phone OTP verification failed", { phone, error: error.message });
+        // Generic error
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "otp" 
+            }) 
+        };
     }
 
     revalidatePath("/", "layout");
@@ -193,6 +407,12 @@ export async function verifyPhoneOTP(formData: FormData) {
 }
 
 export async function signUpWithPhone(formData: FormData) {
+    // CSRF Protection
+    const csrfError = await checkCsrf(formData);
+    if (csrfError) {
+        return { error: csrfError };
+    }
+
     const supabase = await createClient();
 
     const phone = formData.get("phone") as string;
@@ -210,7 +430,20 @@ export async function signUpWithPhone(formData: FormData) {
     });
 
     if (error) {
-        return { error: error.message };
+        logger.security(
+            SecurityEvents.ACCOUNT_CREATION_ATTEMPT,
+            "low",
+            "failure",
+            { phone, originalError: error.message }
+        );
+        // Generic error - don't reveal if phone already registered
+        return { 
+            error: getGenericAuthError({ 
+                originalError: error.message, 
+                type: "register",
+                context: { phone }
+            }) 
+        };
     }
 
     return { success: true };
