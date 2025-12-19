@@ -6,6 +6,8 @@ import "./globals.css";
 
 // Google Analytics Measurement ID
 const GA_MEASUREMENT_ID = "G-2Z3YEP2X2Z";
+// Google Tag Manager ID
+const GTM_ID = "GTM-NB5TCMVX";
 
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-heading",
@@ -121,6 +123,17 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <head>
+        {/* Google Tag Manager */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+              new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+              j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+              'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+              })(window,document,'script','dataLayer','${GTM_ID}');`,
+          }}
+        />
+        {/* Dark mode initialization */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -137,6 +150,16 @@ export default function RootLayout({
       <body
         className={`${plusJakarta.variable} ${inter.variable} font-body antialiased bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100`}
       >
+        {/* Google Tag Manager (noscript) */}
+        <noscript>
+          <iframe
+            src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
+            height="0"
+            width="0"
+            style={{ display: "none", visibility: "hidden" }}
+          />
+        </noscript>
+
         {/* Google Analytics */}
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
@@ -150,7 +173,7 @@ export default function RootLayout({
             gtag('config', '${GA_MEASUREMENT_ID}');
           `}
         </Script>
-        
+
         <Providers>{children}</Providers>
       </body>
     </html>
