@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { 
     trackFailedLogin, 
@@ -11,6 +12,25 @@ import {
 import { logger, SecurityEvents } from "@/lib/logger";
 import { validateCsrfToken } from "@/lib/csrf";
 import { getGenericAuthError } from "@/lib/auth-errors";
+
+/**
+ * Gets the site URL, detecting localhost automatically
+ */
+async function getSiteUrl(): Promise<string> {
+    const headersList = await headers();
+    const host = headersList.get("host") || "";
+    
+    // If running on localhost, use localhost URL regardless of env var
+    if (host.includes("localhost") || host.includes("127.0.0.1")) {
+        const protocol = host.includes("localhost") ? "http" : "https";
+        return `${protocol}://${host}`;
+    }
+    
+    // For production, use configured URL
+    return process.env.NEXT_PUBLIC_SITE_URL
+        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+        || "http://localhost:3000";
+}
 
 /**
  * Validates CSRF token from form data
@@ -126,9 +146,7 @@ export async function register(formData: FormData) {
     const fullName = formData.get("full_name") as string;
 
     // Get the site URL for email confirmation redirect
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-        || "http://localhost:3000";
+    const siteUrl = await getSiteUrl();
 
     const { data, error } = await supabase.auth.signUp({
         email,
@@ -195,11 +213,7 @@ export async function signOut() {
 
 export async function signInWithGoogle() {
     const supabase = await createClient();
-
-    // Get the site URL - prioritize explicit config, then Vercel auto-detected URL
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-        || "http://localhost:3000";
+    const siteUrl = await getSiteUrl();
 
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -231,11 +245,7 @@ export async function signInWithGoogle() {
 
 export async function signInWithGithub() {
     const supabase = await createClient();
-
-    // Get the site URL - prioritize explicit config, then Vercel auto-detected URL
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-        || "http://localhost:3000";
+    const siteUrl = await getSiteUrl();
 
     const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "github",
@@ -275,11 +285,7 @@ export async function forgotPassword(formData: FormData) {
     const supabase = await createClient();
 
     const email = formData.get("email") as string;
-
-    // Get the site URL for redirect
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
-        || "http://localhost:3000";
+    const siteUrl = await getSiteUrl();
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${siteUrl}/auth/callback?next=/reset-password`,

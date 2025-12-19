@@ -50,22 +50,17 @@ export async function GET(request: Request) {
     if (code) {
         const supabase = await createClient();
         
-        // ============================================
-        // SECURITY: SESSION FIXATION PREVENTION
-        // ============================================
+        // Exchange the code for a session
         // Supabase's exchangeCodeForSession automatically:
         // 1. Validates the OAuth state parameter (CSRF protection)
         // 2. Creates a NEW session (session regeneration)
         // 3. Sets secure, httpOnly cookies for the new session
-        // 
-        // This prevents session fixation attacks where an attacker
-        // tricks a victim into using a session ID the attacker knows.
-        
-        // Clear any existing session before creating new one
-        // This provides defense-in-depth against session fixation
-        await supabase.auth.signOut({ scope: "local" });
-        
         const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+        // Log errors for debugging
+        if (error) {
+            console.error("Auth callback error:", error.message, error);
+        }
 
         if (!error && data.user) {
             const user = data.user;
