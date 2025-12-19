@@ -65,10 +65,10 @@ function getRateLimitType(pathname: string): RateLimitType {
 }
 
 // ============================================
-// MIDDLEWARE
+// PROXY (Next.js 16 Middleware)
 // ============================================
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
     const requestId = generateRequestId();
     const startTime = Date.now();
