@@ -131,7 +131,9 @@ export async function POST(request: NextRequest) {
         const sanitizedUrl = page_url ? sanitizeUrl(page_url) : null;
 
         // Insert feedback with sanitized values
-        const { data, error } = await supabase
+        // Note: Don't use .select() after insert - the SELECT RLS policy
+        // references auth.users which anon key can't access
+        const { error } = await supabase
             .from("feedback")
             .insert({
                 type,
@@ -143,9 +145,7 @@ export async function POST(request: NextRequest) {
                 user_id: user_id || null,
                 user_agent: typeof user_agent === "string" ? user_agent.slice(0, LIMITS.USER_AGENT_MAX) : null,
                 page_url: sanitizedUrl?.slice(0, LIMITS.URL_MAX) || null,
-            })
-            .select()
-            .single();
+            });
 
         if (error) {
             logger.error("Feedback submission error", new Error(error.message), { 
@@ -164,12 +164,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        logger.info("Feedback submitted", { id: data.id, type });
+        logger.info("Feedback submitted", { type });
 
         return NextResponse.json({
             success: true,
             message: "Feedback submitted successfully",
-            id: data.id,
         });
     } catch (err) {
         logger.error("Feedback API error", err instanceof Error ? err : new Error(String(err)));
