@@ -39,6 +39,10 @@ export const metadata: Metadata = {
   authors: [{ name: "Smart Split Team" }],
   creator: "Smart Split",
   publisher: "Smart Split",
+  // Google Search Console verification
+  verification: {
+    google: "google3e02d7e6ed1b0e91",
+  },
   formatDetection: {
     email: false,
     address: false,
