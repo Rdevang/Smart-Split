@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
+// NOTE: updateSession removed - Next.js 16 proxy can't modify cookies
+// Auth is now handled at page level via Server Components
 import { checkRateLimit, getClientIP, createRateLimitHeaders } from "@/lib/rate-limit";
 import { analyzeRequest } from "@/lib/security-monitor";
 import { logger, generateRequestId } from "@/lib/logger";
@@ -89,7 +90,7 @@ export async function proxy(request: NextRequest) {
         pathname.startsWith("/reset-password") ||
         pathname.startsWith("/auth/callback")
     ) {
-        return updateSession(request);
+        return NextResponse.next();
     }
 
     // Get client identifier (IP address)
@@ -182,10 +183,10 @@ export async function proxy(request: NextRequest) {
     // CONTINUE REQUEST
     // ============================================
     
-    // Continue with Supabase session handling
-    const response = await updateSession(request);
+    // Create response (auth handled at page level, not in proxy)
+    const response = NextResponse.next();
     
-    // Add headers to response
+    // Add rate limit headers to response
     const rateLimitHeaders = createRateLimitHeaders(rateLimitResult);
     Object.entries(rateLimitHeaders).forEach(([key, value]) => {
         response.headers.set(key, value as string);
