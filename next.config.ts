@@ -72,7 +72,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  
+
   // Apply security headers to all routes
   async headers() {
     return [

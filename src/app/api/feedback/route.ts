@@ -148,9 +148,18 @@ export async function POST(request: NextRequest) {
             .single();
 
         if (error) {
-            logger.error("Feedback submission error", new Error(error.message), { type });
+            logger.error("Feedback submission error", new Error(error.message), { 
+                type,
+                errorCode: error.code,
+                errorDetails: error.details,
+                errorHint: error.hint,
+            });
+            // Return more specific error in development
+            const errorMessage = process.env.NODE_ENV === "development" 
+                ? `Failed to submit feedback: ${error.message}`
+                : "Failed to submit feedback. Please try again later.";
             return NextResponse.json(
-                { error: "Failed to submit feedback" },
+                { error: errorMessage },
                 { status: 500 }
             );
         }
