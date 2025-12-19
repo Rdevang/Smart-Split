@@ -73,7 +73,7 @@ export async function middleware(request: NextRequest) {
     const requestId = generateRequestId();
     const startTime = Date.now();
     
-    // Skip rate limiting and security analysis for static assets and SEO files
+    // Skip rate limiting and security analysis for static assets, SEO files, and auth pages
     if (
         pathname.startsWith("/_next/") ||
         pathname.startsWith("/favicon") ||
@@ -81,9 +81,15 @@ export async function middleware(request: NextRequest) {
         // SEO-critical files - must be accessible to crawlers
         pathname === "/sitemap.xml" ||
         pathname === "/robots.txt" ||
-        pathname.startsWith("/google") // Google verification files
+        pathname.startsWith("/google") || // Google verification files
+        // Auth pages - temporarily disabled rate limiting
+        pathname.startsWith("/login") ||
+        pathname.startsWith("/register") ||
+        pathname.startsWith("/forgot-password") ||
+        pathname.startsWith("/reset-password") ||
+        pathname.startsWith("/auth/callback")
     ) {
-        return NextResponse.next();
+        return updateSession(request);
     }
 
     // Get client identifier (IP address)
