@@ -73,11 +73,15 @@ export async function proxy(request: NextRequest) {
     const requestId = generateRequestId();
     const startTime = Date.now();
     
-    // Skip rate limiting and security analysis for static assets
+    // Skip rate limiting and security analysis for static assets and SEO files
     if (
         pathname.startsWith("/_next/") ||
         pathname.startsWith("/favicon") ||
-        pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
+        pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/) ||
+        // SEO-critical files - must be accessible to crawlers
+        pathname === "/sitemap.xml" ||
+        pathname === "/robots.txt" ||
+        pathname.startsWith("/google") // Google verification files
     ) {
         return NextResponse.next();
     }
