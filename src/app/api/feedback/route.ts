@@ -1,8 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { FeedbackInputSchema, sanitizeForDb, stripHtml, sanitizeUrl } from "@/lib/validation";
+import { sanitizeForDb, stripHtml, sanitizeUrl } from "@/lib/validation";
 import { checkRateLimit, getClientIP, createRateLimitHeaders } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+
+// ============================================
+// GET - Fetch user's feedback submissions
+// ============================================
+export async function GET() {
+    try {
+        const supabase = await createClient();
+
+        // Check if user is authenticated
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+            return NextResponse.json(
+                { error: "Unauthorized. Please log in to view your feedback." },
+                { status: 401 }
+            );
+        }
+
+        // Fetch user's feedbacks
+        const { data: feedbacks, error } = await supabase
+            .from("feedback")
+            .select("id, type, title, description, priority, status, admin_response, created_at, updated_at")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            logger.error("Failed to fetch feedbacks", new Error(error.message));
+            return NextResponse.json(
+                { error: "Failed to fetch feedbacks" },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json({ feedbacks: feedbacks || [] });
+    } catch (err) {
+        logger.error("Feedback GET API error", err instanceof Error ? err : new Error(String(err)));
+        return NextResponse.json(
+            { error: "Internal server error" },
+            { status: 500 }
+        );
+    }
+}
 
 // ============================================
 // INPUT VALIDATION LIMITS
@@ -140,6 +182,7 @@ export async function POST(request: NextRequest) {
                 title: sanitizedTitle,
                 description: sanitizedDescription,
                 priority: type === "bug_report" ? (priority || "medium") : null,
+                status: "submitted",
                 email: sanitizedEmail,
                 name: sanitizedName,
                 user_id: user_id || null,
@@ -148,14 +191,14 @@ export async function POST(request: NextRequest) {
             });
 
         if (error) {
-            logger.error("Feedback submission error", new Error(error.message), { 
+            logger.error("Feedback submission error", new Error(error.message), {
                 type,
                 errorCode: error.code,
                 errorDetails: error.details,
                 errorHint: error.hint,
             });
             // Return more specific error in development
-            const errorMessage = process.env.NODE_ENV === "development" 
+            const errorMessage = process.env.NODE_ENV === "development"
                 ? `Failed to submit feedback: ${error.message}`
                 : "Failed to submit feedback. Please try again later.";
             return NextResponse.json(

@@ -1,4 +1,38 @@
 import "@testing-library/jest-dom";
+import { TextEncoder, TextDecoder } from "util";
+
+// Polyfill TextEncoder/TextDecoder for jsdom environment
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder as typeof global.TextDecoder;
+
+// Mock next/cache to avoid server-only code in tests
+jest.mock("next/cache", () => ({
+    revalidatePath: jest.fn(),
+    revalidateTag: jest.fn(),
+    unstable_cache: jest.fn((fn) => fn),
+}));
+
+// Mock Redis and cache modules to avoid ESM import issues
+jest.mock("@/lib/redis", () => ({
+    redis: null,
+    isRedisAvailable: jest.fn().mockResolvedValue(false),
+    getRedisHealth: jest.fn().mockResolvedValue({ status: "unavailable" }),
+}));
+
+jest.mock("@/lib/cache", () => ({
+    cached: jest.fn((key, fn) => fn()),
+    invalidateCache: jest.fn(),
+    invalidateUserCache: jest.fn(),
+    invalidateGroupCache: jest.fn(),
+}));
+
+jest.mock("@/lib/distributed-lock", () => ({
+    withLock: jest.fn((key, fn) => fn()),
+    LockKeys: {
+        settlement: jest.fn((id) => `lock:settlement:${id}`),
+        expense: jest.fn((id) => `lock:expense:${id}`),
+    },
+}));
 
 // Mock Next.js router
 jest.mock("next/navigation", () => ({

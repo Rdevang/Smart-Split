@@ -17,6 +17,10 @@ const config: Config = {
         "<rootDir>/node_modules/",
         "<rootDir>/.next/",
     ],
+    // Transform ES modules from these packages
+    transformIgnorePatterns: [
+        "/node_modules/(?!(uncrypto|@upstash)/)",
+    ],
     collectCoverageFrom: [
         "src/**/*.{ts,tsx}",
         "!src/**/*.d.ts",

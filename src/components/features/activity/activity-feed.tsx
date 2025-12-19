@@ -121,8 +121,9 @@ export function ActivityFeed({ activities, showGroupName = true }: ActivityFeedP
         return groups;
     }, {} as Record<string, ActivityWithDetails[]>);
 
-    const today = new Date().toDateString();
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    const now = new Date();
+    const today = now.toDateString();
+    const yesterday = new Date(now.getTime() - 86400000).toDateString();
 
     const formatDateHeader = (dateStr: string): string => {
         if (dateStr === today) return "Today";
@@ -158,7 +159,7 @@ export function ActivityFeed({ activities, showGroupName = true }: ActivityFeedP
                                                         alt={activity.user_profile.full_name || "User"}
                                                         width={40}
                                                         height={40}
-                                                        className="rounded-full object-cover"
+                                                        className="h-10 w-10 rounded-full object-cover"
                                                         unoptimized
                                                     />
                                                 ) : (
@@ -178,7 +179,7 @@ export function ActivityFeed({ activities, showGroupName = true }: ActivityFeedP
                                                     {getActivityMessage(activity)}
                                                 </p>
                                                 <div className="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                                    <span>
+                                                    <span suppressHydrationWarning>
                                                         {formatDistanceToNow(new Date(activity.created_at || ""), { addSuffix: true })}
                                                     </span>
                                                     {showGroupName && activity.group && (

@@ -4,13 +4,14 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { MessageSquarePlus, Bug, Lightbulb, Sparkles, HelpCircle, Send, CheckCircle } from "lucide-react";
+import { MessageSquarePlus, Bug, Lightbulb, Sparkles, HelpCircle, Send, CheckCircle, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import { Link } from "@/components/ui/link";
 import { cn } from "@/lib/utils";
 
 const feedbackSchema = z.object({
@@ -134,14 +135,26 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
 
     return (
         <Card className="max-w-2xl mx-auto">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <MessageSquarePlus className="h-6 w-6 text-teal-500" />
-                    Share Your Feedback
-                </CardTitle>
-                <CardDescription>
-                    Help us improve Smart Split! Report bugs, suggest features, or share your ideas.
-                </CardDescription>
+            <CardHeader className="space-y-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                        <CardTitle className="flex items-center gap-2">
+                            <MessageSquarePlus className="h-6 w-6 text-teal-500" />
+                            Share Your Feedback
+                        </CardTitle>
+                        <CardDescription>
+                            Help us improve Smart Split! Report bugs, suggest features, or share your ideas.
+                        </CardDescription>
+                    </div>
+                    {user && (
+                        <Link href="/feedback/history" className="self-start">
+                            <Button variant="outline" size="sm">
+                                <History className="mr-2 h-4 w-4" />
+                                My Submissions
+                            </Button>
+                        </Link>
+                    )}
+                </div>
             </CardHeader>
             <CardContent>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">

@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { Bell, Check, X, Loader2, Users } from "lucide-react";
+import { Bell, Check, X, Loader2, Users, Trash2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import {
     notificationsService,
@@ -28,13 +26,32 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     const [processingId, setProcessingId] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    const loadData = useCallback(async () => {
+        const [notifs, invites, count] = await Promise.all([
+            notificationsService.getNotifications(userId, 10),
+            notificationsService.getPendingInvitations(userId),
+            notificationsService.getUnreadCount(userId),
+        ]);
+        setNotifications(notifs);
+        setInvitations(invites);
+        setUnreadCount(count + invites.length);
+        setIsLoading(false);
+    }, [userId]);
+
     useEffect(() => {
-        loadData();
-        
+        // Schedule initial load to avoid synchronous setState in effect
+        const initialLoad = setTimeout(() => {
+            loadData();
+        }, 0);
+
         // Poll for new notifications every 30 seconds
         const interval = setInterval(loadData, 30000);
-        return () => clearInterval(interval);
-    }, [userId]);
+
+        return () => {
+            clearTimeout(initialLoad);
+            clearInterval(interval);
+        };
+    }, [loadData]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -46,22 +63,10 @@ export function NotificationBell({ userId }: NotificationBellProps) {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const loadData = async () => {
-        const [notifs, invites, count] = await Promise.all([
-            notificationsService.getNotifications(userId, 10),
-            notificationsService.getPendingInvitations(userId),
-            notificationsService.getUnreadCount(userId),
-        ]);
-        setNotifications(notifs);
-        setInvitations(invites);
-        setUnreadCount(count + invites.length);
-        setIsLoading(false);
-    };
-
     const handleAcceptInvitation = async (invitation: GroupInvitation) => {
         setProcessingId(invitation.id);
         const result = await notificationsService.acceptInvitation(invitation.id, userId);
-        
+
         if (result.success) {
             success(`You've joined "${invitation.group?.name}"!`);
             setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
@@ -76,7 +81,7 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     const handleDeclineInvitation = async (invitation: GroupInvitation) => {
         setProcessingId(invitation.id);
         const result = await notificationsService.declineInvitation(invitation.id, userId);
-        
+
         if (result.success) {
             setInvitations((prev) => prev.filter((i) => i.id !== invitation.id));
             setUnreadCount((prev) => Math.max(0, prev - 1));
@@ -94,11 +99,11 @@ export function NotificationBell({ userId }: NotificationBellProps) {
             );
             setUnreadCount((prev) => Math.max(0, prev - 1));
         }
-        
+
         // SECURITY: Only navigate to internal paths (starting with /)
         // This prevents potential injection if action_url is compromised
-        if (notification.action_url && 
-            notification.action_url.startsWith("/") && 
+        if (notification.action_url &&
+            notification.action_url.startsWith("/") &&
             !notification.action_url.startsWith("//") &&
             !notification.action_url.includes("://")) {
             router.push(notification.action_url);
@@ -110,6 +115,37 @@ export function NotificationBell({ userId }: NotificationBellProps) {
         await notificationsService.markAllAsRead(userId);
         setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
         setUnreadCount(invitations.length); // Keep invitation count
+    };
+
+    const handleMarkSingleRead = async (e: React.MouseEvent, notification: Notification) => {
+        e.stopPropagation(); // Prevent triggering the notification click
+        if (notification.is_read) return;
+
+        await notificationsService.markAsRead(notification.id);
+        setNotifications((prev) =>
+            prev.map((n) => (n.id === notification.id ? { ...n, is_read: true } : n))
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+    };
+
+    const handleDeleteNotification = async (e: React.MouseEvent, notificationId: string) => {
+        e.stopPropagation(); // Prevent triggering the notification click
+        const result = await notificationsService.deleteNotification(notificationId);
+        if (result) {
+            setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+        } else {
+            showError("Failed to delete notification");
+        }
+    };
+
+    const handleDeleteAllRead = async () => {
+        const result = await notificationsService.deleteAllRead(userId);
+        if (result) {
+            setNotifications((prev) => prev.filter((n) => !n.is_read));
+            success("Cleared all read notifications");
+        } else {
+            showError("Failed to clear notifications");
+        }
     };
 
     const formatTime = (dateString: string) => {
@@ -148,14 +184,24 @@ export function NotificationBell({ userId }: NotificationBellProps) {
                         <h3 className="font-semibold text-gray-900 dark:text-white">
                             Notifications
                         </h3>
-                        {notifications.some((n) => !n.is_read) && (
-                            <button
-                                onClick={handleMarkAllRead}
-                                className="text-xs text-teal-600 hover:text-teal-700 dark:text-teal-400"
-                            >
-                                Mark all read
-                            </button>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {notifications.some((n) => n.is_read) && (
+                                <button
+                                    onClick={handleDeleteAllRead}
+                                    className="text-xs text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
+                                >
+                                    Clear read
+                                </button>
+                            )}
+                            {notifications.some((n) => !n.is_read) && (
+                                <button
+                                    onClick={handleMarkAllRead}
+                                    className="text-xs text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                                >
+                                    Mark all read
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Content */}
@@ -223,7 +269,7 @@ export function NotificationBell({ userId }: NotificationBellProps) {
                                                         Decline
                                                     </Button>
                                                 </div>
-                                                <p className="mt-1 text-xs text-gray-400">
+                                                <p className="mt-1 text-xs text-gray-400" suppressHydrationWarning>
                                                     {formatTime(invitation.created_at)}
                                                 </p>
                                             </div>
@@ -233,32 +279,57 @@ export function NotificationBell({ userId }: NotificationBellProps) {
 
                                 {/* Regular Notifications */}
                                 {notifications.map((notification) => (
-                                    <button
+                                    <div
                                         key={notification.id}
-                                        onClick={() => handleNotificationClick(notification)}
-                                        className={`w-full border-b border-gray-100 p-4 text-left transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 ${
-                                            !notification.is_read ? "bg-teal-50/50 dark:bg-teal-900/10" : ""
-                                        }`}
+                                        className={`group relative border-b border-gray-100 p-4 transition-colors hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 ${!notification.is_read ? "bg-teal-50/50 dark:bg-teal-900/10" : ""
+                                            }`}
                                     >
-                                        <div className="flex items-start gap-3">
-                                            {!notification.is_read && (
-                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-teal-500" />
-                                            )}
-                                            <div className={`flex-1 ${notification.is_read ? "ml-5" : ""}`}>
-                                                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                                    {notification.title}
-                                                </p>
-                                                {notification.message && (
-                                                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                        {notification.message}
-                                                    </p>
+                                        <button
+                                            onClick={() => handleNotificationClick(notification)}
+                                            className="w-full text-left"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                {!notification.is_read && (
+                                                    <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-teal-500" />
                                                 )}
-                                                <p className="mt-1 text-xs text-gray-400">
-                                                    {formatTime(notification.created_at)}
-                                                </p>
+                                                <div className={`flex-1 min-w-0 ${notification.is_read ? "ml-5" : ""}`}>
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-white pr-16">
+                                                        {notification.title}
+                                                    </p>
+                                                    {notification.message && (
+                                                        <p className="text-sm text-gray-600 dark:text-gray-400 pr-16">
+                                                            {notification.message}
+                                                        </p>
+                                                    )}
+                                                    <p className="mt-1 text-xs text-gray-400" suppressHydrationWarning>
+                                                        {formatTime(notification.created_at)}
+                                                    </p>
+                                                </div>
                                             </div>
+                                        </button>
+
+                                        {/* Action buttons */}
+                                        <div className="absolute right-3 top-3 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                            {!notification.is_read && (
+                                                <button
+                                                    onClick={(e) => handleMarkSingleRead(e, notification)}
+                                                    className="rounded-full p-1.5 text-gray-400 hover:bg-teal-100 hover:text-teal-600 dark:hover:bg-teal-900/30 dark:hover:text-teal-400"
+                                                    title="Mark as read"
+                                                >
+                                                    <CheckCircle className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                            {notification.is_read && (
+                                                <button
+                                                    onClick={(e) => handleDeleteNotification(e, notification.id)}
+                                                    className="rounded-full p-1.5 text-gray-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                                                    title="Delete notification"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            )}
                                         </div>
-                                    </button>
+                                    </div>
                                 ))}
                             </>
                         )}

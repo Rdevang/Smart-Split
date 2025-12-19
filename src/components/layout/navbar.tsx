@@ -16,6 +16,7 @@ import {
     Menu,
     X,
     UserPlus,
+    Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/(auth)/actions";
@@ -29,6 +30,7 @@ interface NavbarProps {
         email: string;
         full_name?: string | null;
         avatar_url?: string | null;
+        role?: string;
     };
 }
 
@@ -203,6 +205,20 @@ export function Navbar({ user }: NavbarProps) {
                                             Settings
                                         </Link>
                                     </div>
+
+                                    {/* Admin Link - Only for site_admin or admin */}
+                                    {(user.role === "site_admin" || user.role === "admin") && (
+                                        <div className="border-t border-gray-100 py-2 dark:border-gray-800">
+                                            <Link
+                                                href="/admin"
+                                                onClick={() => setIsProfileOpen(false)}
+                                                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                            >
+                                                <Shield className="h-4 w-4" />
+                                                Admin Panel
+                                            </Link>
+                                        </div>
+                                    )}
 
                                     {/* Logout */}
                                     <div className="border-t border-gray-100 pt-2 dark:border-gray-800">

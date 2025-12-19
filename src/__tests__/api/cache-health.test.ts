@@ -191,11 +191,12 @@ describe("GET /api/cache/health", () => {
             expect(data.status).toBe("error");
         });
 
-        it("returns the error message", async () => {
+        it("returns a safe error message (no internal details exposed)", async () => {
             const response = await GET();
             const data = await response.json();
             
-            expect(data.message).toBe("Connection timeout");
+            // Security: API returns generic message, not raw error details
+            expect(data.message).toBe("Cache connection error. Please try again later.");
         });
 
         it("indicates caching is not working", async () => {

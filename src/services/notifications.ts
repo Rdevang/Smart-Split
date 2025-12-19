@@ -119,6 +119,21 @@ export const notificationsService = {
     },
 
     /**
+     * Delete all read notifications for a user
+     */
+    async deleteAllRead(userId: string): Promise<boolean> {
+        const supabase = createClient();
+
+        const { error } = await supabase
+            .from("notifications")
+            .delete()
+            .eq("user_id", userId)
+            .eq("is_read", true);
+
+        return !error;
+    },
+
+    /**
      * Create a notification
      */
     async createNotification(notification: {
