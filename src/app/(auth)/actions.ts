@@ -14,19 +14,25 @@ import { validateCsrfToken } from "@/lib/csrf";
 import { getGenericAuthError } from "@/lib/auth-errors";
 
 /**
- * Gets the site URL, detecting localhost automatically
+ * Gets the site URL, detecting localhost and Vercel preview environments automatically
  */
 async function getSiteUrl(): Promise<string> {
     const headersList = await headers();
     const host = headersList.get("host") || "";
     
-    // If running on localhost, use localhost URL regardless of env var
+    // If running on localhost, use localhost URL
     if (host.includes("localhost") || host.includes("127.0.0.1")) {
         const protocol = host.includes("localhost") ? "http" : "https";
         return `${protocol}://${host}`;
     }
     
-    // For production, use configured URL
+    // For Vercel deployments, use the actual host from the request
+    // This correctly handles both production and preview URLs
+    if (host) {
+        return `https://${host}`;
+    }
+    
+    // Fallback chain
     return process.env.NEXT_PUBLIC_SITE_URL
         || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
         || "http://localhost:3000";

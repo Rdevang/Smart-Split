@@ -138,13 +138,13 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
             <CardHeader className="space-y-4">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-1">
-                        <CardTitle className="flex items-center gap-2">
-                            <MessageSquarePlus className="h-6 w-6 text-teal-500" />
-                            Share Your Feedback
-                        </CardTitle>
-                        <CardDescription>
-                            Help us improve Smart Split! Report bugs, suggest features, or share your ideas.
-                        </CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                    <MessageSquarePlus className="h-6 w-6 text-teal-500" />
+                    Share Your Feedback
+                </CardTitle>
+                <CardDescription>
+                    Help us improve Smart Split! Report bugs, suggest features, or share your ideas.
+                </CardDescription>
                     </div>
                     {user && (
                         <Link href="/feedback/history" className="self-start">
