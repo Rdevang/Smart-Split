@@ -15,16 +15,50 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+## Configuration for Authenticated Testing
+
+### 1. Create Test Users in Supabase
+
+Go to [Supabase Dashboard](https://supabase.com/dashboard/project/cizakzarkdgieclbwljy/auth/users) → Authentication → Users → **Add User**
+
+Create these test users:
+| Email | Password |
+|-------|----------|
+| loadtest1@smartsplit.test | LoadTest123! |
+| loadtest2@smartsplit.test | LoadTest123! |
+| loadtest3@smartsplit.test | LoadTest123! |
+
+### 2. Configure Environment Variables
+
+```bash
+# Copy the example env file
+cp .env.example .env
+
+# Edit .env with your actual values
+nano .env
+```
+
+Required variables:
+```env
+SUPABASE_URL=https://cizakzarkdgieclbwljy.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...  # Get from Supabase Dashboard
+
+TEST_USER_EMAIL=loadtest1@smartsplit.test
+TEST_USER_PASSWORD=LoadTest123!
+```
+
+Get your **SUPABASE_ANON_KEY** from: Supabase Dashboard → Settings → API → `anon` `public` key
+
 ## Running Tests
 
 ### Web UI Mode (Recommended for Interactive Testing)
 
 ```bash
+# Test Production
+locust -f locustfile.py --host=https://smart-split-one.vercel.app
+
 # Test Preview Environment
 locust -f locustfile.py --host=https://smart-split-git-preview-rdevangs-projects.vercel.app
-
-# Test Production (use carefully!)
-locust -f locustfile.py --host=https://smart-split-one.vercel.app
 ```
 
 Then open http://localhost:8089 in your browser.
@@ -34,7 +68,7 @@ Then open http://localhost:8089 in your browser.
 ```bash
 # Quick test: 50 users, 10 users/sec spawn rate, 30 seconds
 locust -f locustfile.py \
-  --host=https://smart-split-git-preview-rdevangs-projects.vercel.app \
+  --host=https://smart-split-one.vercel.app \
   --headless \
   -u 50 \
   -r 10 \
@@ -42,7 +76,7 @@ locust -f locustfile.py \
 
 # Medium test: 100 users, 20 users/sec, 2 minutes
 locust -f locustfile.py \
-  --host=https://smart-split-git-preview-rdevangs-projects.vercel.app \
+  --host=https://smart-split-one.vercel.app \
   --headless \
   -u 100 \
   -r 20 \
@@ -50,7 +84,7 @@ locust -f locustfile.py \
 
 # Heavy test: 500 users, 50 users/sec, 5 minutes
 locust -f locustfile.py \
-  --host=https://smart-split-git-preview-rdevangs-projects.vercel.app \
+  --host=https://smart-split-one.vercel.app \
   --headless \
   -u 500 \
   -r 50 \
@@ -61,7 +95,7 @@ locust -f locustfile.py \
 
 ```bash
 locust -f locustfile.py \
-  --host=https://smart-split-git-preview-rdevangs-projects.vercel.app \
+  --host=https://smart-split-one.vercel.app \
   --headless \
   -u 100 \
   -r 10 \
@@ -71,33 +105,45 @@ locust -f locustfile.py \
 
 ## Test Scenarios
 
-| User Type | Weight | Description |
-|-----------|--------|-------------|
-| PublicUser | 3 | Anonymous users browsing public pages |
-| SEOCrawler | 1 | Simulates search engine crawlers |
-| APITester | 2 | Tests API endpoints |
-| StaticAssetLoader | 1 | Tests static asset delivery |
-| AggressiveLoadTester | 1 | High-frequency stress testing |
+### User Types
 
-## Key Endpoints Tested
+| User Type | Weight | Auth | Description |
+|-----------|--------|------|-------------|
+| PublicUser | 3 | ❌ | Anonymous users browsing public pages |
+| AuthenticatedUser | 2 | ✅ | Logged-in users accessing dashboard, groups, etc. |
+| APIUser | 2 | ✅ | Tests API endpoints with auth tokens |
+| SEOCrawler | 1 | ❌ | Simulates search engine crawlers |
+| StaticAssetLoader | 1 | ❌ | Tests static asset delivery |
 
-### Public Pages
+### Endpoints Tested
+
+#### Public Pages (No Auth)
 - `/` - Landing page
 - `/login` - Login page
 - `/register` - Registration page
 - `/feedback` - Feedback form
 - `/forgot-password` - Password reset
 
-### API Endpoints
-- `/api/health` - Health check
-- `/api/cache/health` - Redis cache status
-- `/api/feedback` - Feedback submission (POST)
+#### Authenticated Pages
+- `/dashboard` - Main dashboard
+- `/groups` - Groups list
+- `/expenses` - All expenses
+- `/activity` - Activity feed
+- `/settings/profile` - Profile settings
+- `/feedback/history` - User's feedback history
 
-### SEO/Static
+#### API Endpoints
+- `GET /api/health` - Health check
+- `GET /api/cache/health` - Redis cache status
+- `GET /api/feedback` - User's feedback (auth required)
+- `POST /api/feedback` - Submit feedback
+
+#### SEO/Static
 - `/sitemap.xml` - Sitemap
 - `/robots.txt` - Robots file
 - `/manifest.json` - PWA manifest
 - `/favicon.svg` - Favicon
+- `/logo-icon.svg` - Logo
 
 ## Performance Targets
 
@@ -115,9 +161,14 @@ locust -f locustfile.py \
 2. **Watch Rate Limits**: The app has rate limiting - some 429 errors are expected
 3. **Monitor Vercel**: Check Vercel dashboard for function invocations and errors
 4. **Check Supabase**: Monitor database connections in Supabase dashboard
-5. **Use Preview**: Always test on preview environment first!
+5. **Token Expiration**: Supabase tokens expire after 1 hour - restart test for longer runs
 
 ## Troubleshooting
+
+### Auth Failures
+- Verify test users exist in Supabase Auth
+- Check SUPABASE_ANON_KEY is correct
+- Ensure passwords match
 
 ### Too Many 429 Errors
 Rate limiting is working correctly. Reduce spawn rate or number of users.
@@ -130,14 +181,24 @@ Vercel may be throttling connections. Wait a few minutes and retry with fewer us
 - Monitor Supabase connection pool
 - Review Redis cache hit rates
 
+### Preview Environment 401 Errors
+Vercel preview deployments have authentication protection. Either:
+1. Use production URL for load testing
+2. Disable protection in Vercel Dashboard → Settings → Deployment Protection
+
 ## CI/CD Integration
 
 Add to your GitHub Actions:
 
 ```yaml
 - name: Load Test
+  env:
+    SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+    SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+    TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+    TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
   run: |
-    pip install locust faker
+    pip install locust faker python-dotenv requests
     cd load-testing
     locust -f locustfile.py \
       --host=${{ secrets.PREVIEW_URL }} \
@@ -147,4 +208,3 @@ Add to your GitHub Actions:
       --run-time 30s \
       --exit-code-on-error 1
 ```
-

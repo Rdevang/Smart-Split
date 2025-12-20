@@ -1,0 +1,9 @@
+# Ignore virtual environment
+venv/
+
+# Ignore local env files
+.env
+
+# Ignore test reports
+*.html
+report*.html
