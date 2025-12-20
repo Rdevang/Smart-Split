@@ -73,13 +73,63 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // Apply security headers to all routes
+  // Apply security headers and caching to all routes
   async headers() {
     return [
       {
-        // Apply to all routes
+        // Apply security headers to all routes
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        // Cache static assets aggressively (1 year)
+        source: "/(.*)\\.(ico|svg|png|jpg|jpeg|gif|webp|woff|woff2)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        // Cache landing page at edge (5 minutes, stale-while-revalidate)
+        source: "/",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, s-maxage=300, stale-while-revalidate=600",
+          },
+        ],
+      },
+      {
+        // Cache public pages (login, register, feedback) at edge
+        source: "/(login|register|feedback|forgot-password)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, s-maxage=300, stale-while-revalidate=600",
+          },
+        ],
+      },
+      {
+        // Cache SEO files longer
+        source: "/(sitemap.xml|robots.txt|manifest.json)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, s-maxage=3600, stale-while-revalidate=86400",
+          },
+        ],
+      },
+      {
+        // API health endpoints - short cache
+        source: "/api/(health|cache/health)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, s-maxage=10, stale-while-revalidate=30",
+          },
+        ],
       },
     ];
   },
