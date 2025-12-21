@@ -20,12 +20,12 @@ CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
 -- Assign site_admin role to specific user
 -- ============================================
 
--- Update the user with email rdevang170@gmail.com to site_admin
-UPDATE public.profiles 
-SET role = 'site_admin' 
-WHERE id = (
-    SELECT id FROM auth.users WHERE email = 'rdevang170@gmail.com'
-);
+-- NOTE: Replace 'your-admin@email.com' with the actual admin email before running
+-- UPDATE public.profiles 
+-- SET role = 'site_admin' 
+-- WHERE id = (
+--     SELECT id FROM auth.users WHERE email = 'your-admin@email.com'
+-- );
 
 -- ============================================
 -- RLS Policies for admin access
