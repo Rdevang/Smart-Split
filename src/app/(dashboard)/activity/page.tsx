@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { activitiesServerService } from "@/services/activities.server";
 import { ActivityFeed } from "@/components/features/activity/activity-feed";
+import { encryptUrlId } from "@/lib/url-ids";
 
 export default async function ActivityPage() {
     const supabase = await createClient();
@@ -12,6 +13,14 @@ export default async function ActivityPage() {
     }
 
     const activities = await activitiesServerService.getUserActivities(user.id);
+
+    // Pre-encrypt group IDs for secure URLs
+    const encryptedGroupIds: Record<string, string> = {};
+    activities.forEach(activity => {
+        if (activity.group?.id && !encryptedGroupIds[activity.group.id]) {
+            encryptedGroupIds[activity.group.id] = encryptUrlId(activity.group.id);
+        }
+    });
 
     return (
         <div>
@@ -24,7 +33,11 @@ export default async function ActivityPage() {
                 </p>
             </div>
 
-            <ActivityFeed activities={activities} showGroupName />
+            <ActivityFeed 
+                activities={activities} 
+                showGroupName 
+                encryptedGroupIds={encryptedGroupIds}
+            />
         </div>
     );
 }

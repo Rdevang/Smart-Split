@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, MessageSquare, UserCheck, UserX, Clock, CheckCircle } from "lucide-react";
+import { Users, MessageSquare, UserCheck, Clock, Shield } from "lucide-react";
 import { Link } from "@/components/ui/link";
 
 export const metadata = {
@@ -53,6 +53,16 @@ export default async function AdminDashboardPage() {
         .order("created_at", { ascending: false })
         .limit(5);
 
+    // Get rate limit stats
+    const { count: rateLimitRoutes } = await supabase
+        .from("rate_limit_settings")
+        .select("*", { count: "exact", head: true });
+
+    const { count: enabledRateLimits } = await supabase
+        .from("rate_limit_settings")
+        .select("*", { count: "exact", head: true })
+        .eq("is_enabled", true);
+
     const stats = [
         { 
             label: "Total Users", 
@@ -79,12 +89,12 @@ export default async function AdminDashboardPage() {
             href: "/admin/feedback"
         },
         { 
-            label: "Pending Feedback", 
-            value: pendingFeedback || 0, 
-            icon: Clock, 
-            color: "text-yellow-500",
-            bg: "bg-yellow-50 dark:bg-yellow-900/20",
-            href: "/admin/feedback?status=pending"
+            label: "Rate Limits", 
+            value: `${enabledRateLimits || 0}/${rateLimitRoutes || 0}`, 
+            icon: Shield, 
+            color: "text-orange-500",
+            bg: "bg-orange-50 dark:bg-orange-900/20",
+            href: "/admin/rate-limits"
         },
     ];
 

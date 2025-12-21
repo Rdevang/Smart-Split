@@ -13,12 +13,14 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "@/components/ui/link";
-import { encryptUrlId } from "@/lib/url-ids";
+// Note: URL ID encryption happens on server only, client uses plain IDs
 import type { ActivityWithDetails } from "@/services/activities.server";
 
 interface ActivityFeedProps {
     activities: ActivityWithDetails[];
     showGroupName?: boolean;
+    /** Pre-encrypted group IDs from server component */
+    encryptedGroupIds?: Record<string, string>;
 }
 
 const actionIcons: Record<string, React.ReactNode> = {
@@ -95,7 +97,7 @@ function getActivityMessage(activity: ActivityWithDetails): string {
     return `${userName} performed an action`;
 }
 
-export function ActivityFeed({ activities, showGroupName = true }: ActivityFeedProps) {
+export function ActivityFeed({ activities, showGroupName = true, encryptedGroupIds = {} }: ActivityFeedProps) {
     if (activities.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-16 dark:border-gray-800">
@@ -187,7 +189,7 @@ export function ActivityFeed({ activities, showGroupName = true }: ActivityFeedP
                                                         <>
                                                             <span>•</span>
                                                             <Link
-                                                                href={`/groups/${encryptUrlId(activity.group.id)}`}
+                                                                href={`/groups/${encryptedGroupIds[activity.group.id] || activity.group.id}`}
                                                                 className="text-teal-600 hover:underline dark:text-teal-400"
                                                             >
                                                                 {activity.group.name}

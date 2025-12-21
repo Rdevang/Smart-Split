@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Users, Calendar, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { encryptUrlId } from "@/lib/url-ids";
+// Note: URL ID encryption happens on server only, client uses plain IDs
 
 // Generic group type that works with both client and server services
 interface GroupCardGroup {
@@ -16,6 +16,8 @@ interface GroupCardGroup {
 
 interface GroupCardProps {
     group: GroupCardGroup;
+    /** Pre-encrypted ID from server component for secure URLs */
+    encryptedId?: string;
 }
 
 const categoryColors: Record<string, "default" | "primary" | "success" | "warning" | "danger" | "info"> = {
@@ -32,7 +34,7 @@ const categoryEmojis: Record<string, string> = {
     other: "📋",
 };
 
-export function GroupCard({ group }: GroupCardProps) {
+export function GroupCard({ group, encryptedId }: GroupCardProps) {
     const category = group.category || "other";
     const emoji = categoryEmojis[category] || "📋";
     const formattedDate = group.updated_at
@@ -41,12 +43,12 @@ export function GroupCard({ group }: GroupCardProps) {
             day: "numeric",
         })
         : "N/A";
-
-    // Encrypt group ID for URL security
-    const encryptedId = encryptUrlId(group.id);
+    
+    // Use encrypted ID if provided (from server component), fallback to plain ID
+    const urlId = encryptedId || group.id;
 
     return (
-        <Link href={`/groups/${encryptedId}`}>
+        <Link href={`/groups/${urlId}`}>
             <Card className="group cursor-pointer transition-all hover:border-teal-300 hover:shadow-md dark:hover:border-teal-600">
                 <CardContent className="p-5">
                     <div className="flex items-start justify-between">

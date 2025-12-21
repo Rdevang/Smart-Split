@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/components/ui/toast";
 import { expensesService } from "@/services/expenses";
 import { onExpenseMutation } from "@/app/(dashboard)/actions";
-import { encryptUrlId } from "@/lib/url-ids";
+import { getEncryptedGroupUrl } from "@/app/(dashboard)/actions";
 import type { Database } from "@/types/database";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
@@ -159,17 +159,17 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
 
     const handleSplitChange = (memberId: string, value: string) => {
         let numValue = Number(value) || 0;
-        
+
         // Cap at 100 for percentage mode
         if (splitType === "percentage" && numValue > 100) {
             numValue = 100;
         }
-        
+
         // Don't allow negative values
         if (numValue < 0) {
             numValue = 0;
         }
-        
+
         setCustomSplits((prev) => ({
             ...prev,
             [memberId]: numValue,
@@ -196,10 +196,10 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
         const splits = selectedMembers.map((memberId) => {
             const isPlaceholder = memberId.startsWith("placeholder:");
             const actualId = isPlaceholder ? memberId.replace("placeholder:", "") : memberId;
-            
+
             // For percentage splits, calculate actual amount from percentage
             const percentage = customSplits[memberId] || 0;
-            const amount = splitType === "percentage" 
+            const amount = splitType === "percentage"
                 ? Math.round((totalAmount * percentage / 100) * 100) / 100
                 : percentage; // For equal/exact, customSplits already contains amounts
 
@@ -224,8 +224,8 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
         try {
             // Determine if payer is a placeholder or registered user
             const isPayerPlaceholder = data.paid_by.startsWith("placeholder:");
-            const payerId = isPayerPlaceholder 
-                ? data.paid_by.replace("placeholder:", "") 
+            const payerId = isPayerPlaceholder
+                ? data.paid_by.replace("placeholder:", "")
                 : data.paid_by;
 
             const result = await expensesService.createExpense(
@@ -258,8 +258,13 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
             await onExpenseMutation(group.id, paidByUserId, participantIds);
 
             toast.success(`Expense "$${totalAmount.toFixed(2)}" added successfully!`);
-            router.push(`/groups/${encryptUrlId(group.id)}`);
-            router.refresh();
+
+            // Redirect to group page after short delay for toast to show
+            const encryptedUrl = await getEncryptedGroupUrl(group.id);
+            console.log("Redirecting to:", encryptedUrl);
+
+            // Use window.location for more reliable redirect
+            window.location.href = encryptedUrl;
         } catch {
             setError("An unexpected error occurred");
             toast.error("An unexpected error occurred");
@@ -270,7 +275,7 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
 
     const splitsTotal = Object.values(customSplits).reduce((sum, val) => sum + val, 0);
     const amountNum = Number(amount) || 0;
-    
+
     // For percentage splits, check if percentages add to 100
     // For other splits, check if amounts match total
     const isBalanced = splitType === "percentage"
@@ -352,7 +357,7 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                             </label>
                             {(amountNum > 0 || splitType === "percentage") && (
                                 <span className={`text-sm ${isBalanced ? "text-green-600" : "text-red-600"}`}>
-                                    {splitType === "percentage" 
+                                    {splitType === "percentage"
                                         ? `${splitsTotal.toFixed(1)}% / 100%`
                                         : `$${splitsTotal.toFixed(2)} / $${amountNum.toFixed(2)}`
                                     }

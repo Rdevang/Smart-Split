@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useOptimistic, useTransition, useEffect } from "react";
-import { ArrowRight, Sparkles, CheckCircle2, List, Smartphone, ExternalLink } from "lucide-react";
+import { ArrowRight, Sparkles, CheckCircle2, List, Smartphone, ExternalLink, Bell, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simpl
 import { groupsService } from "@/services/groups";
 import { formatCurrency } from "@/lib/currency";
 import { openUpiPayment, generateUpiUrl, isValidUpiId } from "@/lib/upi";
+import { sendPaymentReminder } from "@/app/(dashboard)/actions";
 
 interface ExpenseSplit {
     user_id: string | null;
@@ -127,7 +128,7 @@ function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): Simp
 export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, currency = "USD", onSettle }: SimplifiedDebtsProps) {
     const [isSimplified, setIsSimplified] = useState(true);
     const { success, error: showError, info } = useToast();
-    
+
     // Optimistic UI: Track settled payments with immediate UI update
     const [isPending, startTransition] = useTransition();
     const [settledPayments, setOptimisticSettled] = useOptimistic(
@@ -135,11 +136,15 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
         (current: Set<string>, paymentKey: string) => new Set([...current, paymentKey])
     );
     const [pendingPaymentKey, setPendingPaymentKey] = useState<string | null>(null);
-    
+
     // UPI IDs for payees (userId -> upiId)
     const [payeeUpiIds, setPayeeUpiIds] = useState<Record<string, string | null>>({});
     const [currentUserHasUpi, setCurrentUserHasUpi] = useState<boolean | null>(null);
     const [isMobile, setIsMobile] = useState(false);
+
+    // Track reminded users and loading state
+    const [remindedUsers, setRemindedUsers] = useState<Set<string>>(new Set());
+    const [remindingUser, setRemindingUser] = useState<string | null>(null);
 
     const payments = useMemo(() => {
         if (isSimplified) {
@@ -178,9 +183,9 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
             const payeeIds = payments
                 .filter(p => p.from_user_id === currentUserId && !p.to_is_placeholder)
                 .map(p => p.to_user_id);
-            
+
             const uniquePayeeIds = [...new Set(payeeIds)];
-            
+
             const upiIdMap: Record<string, string | null> = {};
             for (const payeeId of uniquePayeeIds) {
                 try {
@@ -196,7 +201,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                     upiIdMap[payeeId] = null;
                 }
             }
-            
+
             setPayeeUpiIds(upiIdMap);
         };
 
@@ -208,7 +213,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
     // Handle UPI payment
     const handleUpiPayment = (payment: SimplifiedPayment) => {
         const upiId = payeeUpiIds[payment.to_user_id];
-        
+
         if (!upiId || !isValidUpiId(upiId)) {
             showError(`${payment.to_user_name} hasn't set up their UPI ID yet`);
             return;
@@ -238,6 +243,38 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                 `UPI ID "${upiId}" copied! Open any UPI app on your phone and pay ₹${payment.amount.toFixed(2)} to ${payment.to_user_name}`,
                 "Pay via UPI"
             );
+        }
+    };
+
+    // Handle sending payment reminder
+    const handleRemind = async (payment: SimplifiedPayment) => {
+        if (payment.from_is_placeholder) {
+            showError("Cannot send reminder to non-registered users");
+            return;
+        }
+
+        setRemindingUser(payment.from_user_id);
+
+        try {
+            const result = await sendPaymentReminder(
+                groupId,
+                payment.from_user_id,
+                currentUserId,
+                payment.amount,
+                currency
+            );
+
+            if (result.success) {
+                setRemindedUsers(prev => new Set([...prev, payment.from_user_id]));
+                success(`Reminder sent to ${payment.from_user_name}!`, "Reminder Sent");
+            } else {
+                showError(result.error || "Failed to send reminder");
+            }
+        } catch (err) {
+            console.error("Failed to send reminder:", err);
+            showError("Failed to send reminder");
+        } finally {
+            setRemindingUser(null);
         }
     };
 
@@ -302,7 +339,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
             }
         });
     };
-    
+
     // Track if a specific payment is being settled (for loading state)
     const isSettling = (paymentKey: string) => isPending && pendingPaymentKey === paymentKey;
 
@@ -362,81 +399,111 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                             const isSettled = settledPayments.has(paymentKey);
                             const settlingThis = isSettling(paymentKey);
                             const youOwe = payment.from_user_id === currentUserId;
+                            const hasReminded = remindedUsers.has(payment.from_user_id);
+                            const isReminding = remindingUser === payment.from_user_id;
 
                             return (
                                 <div
                                     key={paymentKey}
-                                    className={`flex items-center justify-between rounded-lg border p-3 transition-all duration-200 ${isSettled
-                                        ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                    className={`relative overflow-hidden rounded-lg border transition-all duration-200 ${isSettled
+                                        ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/20"
                                         : youOwe
-                                            ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
-                                            : "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                                            ? "border-orange-200 bg-orange-50/50 hover:border-orange-300 dark:border-orange-800/60 dark:bg-orange-900/10"
+                                            : "border-teal-200 bg-teal-50/50 hover:border-teal-300 dark:border-teal-800/60 dark:bg-teal-900/10"
                                         }`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-sm font-medium ${youOwe ? "text-red-700 dark:text-red-400" : "text-green-700 dark:text-green-400"
+                                    {/* Decorative accent */}
+                                    <div className={`absolute left-0 top-0 h-full w-0.5 ${isSettled ? "bg-green-500" : youOwe ? "bg-orange-500" : "bg-teal-500"}`} />
+
+                                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 pl-4">
+                                        {/* Left: Avatar + Name */}
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${youOwe
+                                                ? "bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400"
+                                                : "bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400"
                                                 }`}>
-                                                {youOwe ? "You" : payment.from_user_name}
-                                            </span>
-                                            <ArrowRight className="h-4 w-4 text-gray-400" />
-                                            <span className={`text-sm font-medium ${!youOwe ? "text-green-700 dark:text-green-400" : "text-gray-700 dark:text-gray-300"
-                                                }`}>
-                                                {youOwe ? payment.to_user_name : "You"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-sm font-bold text-gray-900 dark:text-white">
-                                            {formatCurrency(payment.amount, currency)}
-                                        </span>
-                                        {isSettled ? (
-                                            <Badge variant="success" className="animate-in fade-in duration-300">
-                                                ✓ Settled
-                                            </Badge>
-                                        ) : youOwe ? (
-                                            <div className="flex items-center gap-2">
-                                                {/* UPI Payment Button - only show if payee has UPI ID */}
-                                                {!payment.to_is_placeholder && payeeUpiIds[payment.to_user_id] && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="outline"
-                                                        onClick={() => handleUpiPayment(payment)}
-                                                        className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-900/40"
-                                                        title="Pay via UPI"
-                                                    >
-                                                        {isMobile ? (
-                                                            <>
-                                                                <Smartphone className="mr-1.5 h-3.5 w-3.5" />
-                                                                Pay UPI
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                                                                UPI
-                                                            </>
-                                                        )}
-                                                    </Button>
-                                                )}
-                                                <Button
-                                                    size="sm"
-                                                    variant="primary"
-                                                    isLoading={settlingThis}
-                                                    onClick={() => handleSettle(payment)}
-                                                >
-                                                    Settle
-                                                </Button>
+                                                {youOwe
+                                                    ? payment.to_user_name.charAt(0).toUpperCase()
+                                                    : payment.from_user_name.charAt(0).toUpperCase()
+                                                }
                                             </div>
-                                        ) : (
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                isLoading={settlingThis}
-                                                onClick={() => handleSettle(payment)}
-                                            >
-                                                Mark Paid
-                                            </Button>
-                                        )}
+                                            <div className="min-w-0">
+                                                <span className={`text-sm font-medium ${youOwe ? "text-orange-700 dark:text-orange-300" : "text-teal-700 dark:text-teal-300"}`}>
+                                                    {youOwe ? payment.to_user_name : payment.from_user_name}
+                                                </span>
+                                                <span className="mx-1.5 text-gray-400">→</span>
+                                                <span className={`text-sm ${youOwe ? "text-gray-600 dark:text-gray-400" : "text-teal-600 dark:text-teal-400"}`}>
+                                                    {youOwe ? "You" : "You"}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Right: Amount + Actions */}
+                                        <div className="flex items-center gap-3">
+                                            <span className={`text-base font-bold ${youOwe ? "text-orange-600 dark:text-orange-400" : "text-teal-600 dark:text-teal-400"}`}>
+                                                {formatCurrency(payment.amount, currency)}
+                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                {isSettled ? (
+                                                    <Badge variant="success" className="text-xs">
+                                                        <CheckCircle2 className="mr-1 h-3 w-3" />
+                                                        Settled
+                                                    </Badge>
+                                                ) : youOwe ? (
+                                                    <>
+                                                        {!payment.to_is_placeholder && payeeUpiIds[payment.to_user_id] && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => handleUpiPayment(payment)}
+                                                                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30"
+                                                            >
+                                                                <Smartphone className="mr-1 h-3.5 w-3.5" />
+                                                                UPI
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            size="sm"
+                                                            variant="primary"
+                                                            isLoading={settlingThis}
+                                                            onClick={() => handleSettle(payment)}
+                                                        >
+                                                            Settle
+                                                        </Button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {!payment.from_is_placeholder && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                isLoading={isReminding}
+                                                                disabled={hasReminded}
+                                                                onClick={() => handleRemind(payment)}
+                                                                className={hasReminded
+                                                                    ? "text-gray-400 cursor-not-allowed"
+                                                                    : "text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/30"
+                                                                }
+                                                            >
+                                                                {hasReminded ? (
+                                                                    <><Clock className="mr-1 h-3.5 w-3.5" />Sent</>
+                                                                ) : (
+                                                                    <><Bell className="mr-1 h-3.5 w-3.5" />Remind</>
+                                                                )}
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            size="sm"
+                                                            variant="primary"
+                                                            isLoading={settlingThis}
+                                                            onClick={() => handleSettle(payment)}
+                                                        >
+                                                            Mark Paid
+                                                        </Button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             );
@@ -457,25 +524,36 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                             return (
                                 <div
                                     key={paymentKey}
-                                    className={`flex items-center justify-between rounded-lg border p-3 ${isSettled
-                                        ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
-                                        : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50"
+                                    className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${isSettled
+                                        ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/10"
+                                        : "border-gray-200 bg-gray-50/50 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/30"
                                         }`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm text-gray-700 dark:text-gray-300">
-                                                {payment.from_user_name}
-                                            </span>
-                                            <ArrowRight className="h-4 w-4 text-gray-400" />
-                                            <span className="text-sm text-gray-700 dark:text-gray-300">
-                                                {payment.to_user_name}
-                                            </span>
+                                    <div className="flex items-center justify-between p-4">
+                                        <div className="flex items-center gap-3">
+                                            {/* Mini avatars */}
+                                            <div className="flex -space-x-2">
+                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-600 ring-2 ring-white dark:bg-gray-700 dark:text-gray-300 dark:ring-gray-800">
+                                                    {payment.from_user_name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-300 text-xs font-semibold text-gray-700 ring-2 ring-white dark:bg-gray-600 dark:text-gray-200 dark:ring-gray-800">
+                                                    {payment.to_user_name.charAt(0).toUpperCase()}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                    {payment.from_user_name}
+                                                </span>
+                                                <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
+                                                <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                    {payment.to_user_name}
+                                                </span>
+                                            </div>
                                         </div>
+                                        <span className="text-base font-semibold text-gray-900 dark:text-white">
+                                            {formatCurrency(payment.amount, currency)}
+                                        </span>
                                     </div>
-                                    <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                        {formatCurrency(payment.amount, currency)}
-                                    </span>
                                 </div>
                             );
                         })}

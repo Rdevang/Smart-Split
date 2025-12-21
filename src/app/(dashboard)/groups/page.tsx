@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/features/groups/group-card";
 import { groupsCachedServerService } from "@/services/groups.cached.server";
+import { encryptUrlId } from "@/lib/url-ids";
 
 export default async function GroupsPage() {
     const supabase = await createClient();
@@ -74,7 +75,11 @@ export default async function GroupsPage() {
             ) : (
                 <div className="grid gap-4">
                     {groups.map((group) => (
-                        <GroupCard key={group.id} group={group} />
+                        <GroupCard 
+                            key={group.id} 
+                            group={group} 
+                            encryptedId={encryptUrlId(group.id)}
+                        />
                     ))}
                 </div>
             )}

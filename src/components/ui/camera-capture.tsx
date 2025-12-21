@@ -70,14 +70,25 @@ export function CameraCapture({ onCapture, onClose, isOpen }: CameraCaptureProps
     }, []);
 
     useEffect(() => {
+        let mounted = true;
+
         if (isOpen) {
-            startCamera(facingMode);
+            // Defer camera initialization to avoid synchronous setState in effect
+            const initCamera = async () => {
+                if (!mounted) return;
+                await startCamera(facingMode);
+            };
+            initCamera();
         } else {
+            // Defer state cleanup to next tick to avoid synchronous setState
             stopCamera();
-            setCapturedImage(null);
+            queueMicrotask(() => {
+                if (mounted) setCapturedImage(null);
+            });
         }
 
         return () => {
+            mounted = false;
             stopCamera();
         };
     }, [isOpen, facingMode, startCamera, stopCamera]);

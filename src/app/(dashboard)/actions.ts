@@ -9,6 +9,7 @@ import {
     revalidateMemberTags,
     revalidateUserTags
 } from "@/lib/cache-tags";
+import { encryptUrlId } from "@/lib/url-ids";
 
 // ============================================
 // HYBRID CACHE INVALIDATION
@@ -146,3 +147,101 @@ export async function onGroupMutation(groupId: string, creatorId: string) {
     revalidatePath(`/groups/${groupId}`);
 }
 
+// ============================================
+// URL ID ENCRYPTION (Server-side only)
+// ============================================
+// Encryption uses Node.js crypto which only works on server
+// Client components call this action to get encrypted URLs
+
+/**
+ * Server action to encrypt a URL ID
+ * Use this from client components that need encrypted URLs for navigation
+ */
+export async function getEncryptedUrl(path: string, id: string): Promise<string> {
+    const encryptedId = encryptUrlId(id);
+    return path.replace("[id]", encryptedId);
+}
+
+/**
+ * Server action to get encrypted group URL
+ */
+export async function getEncryptedGroupUrl(groupId: string): Promise<string> {
+    return `/groups/${encryptUrlId(groupId)}`;
+}
+
+// ============================================
+// PAYMENT REMINDERS
+// ============================================
+
+/**
+ * Server action to send a payment reminder notification
+ */
+export async function sendPaymentReminder(
+    groupId: string,
+    debtorUserId: string,
+    creditorUserId: string,
+    amount: number,
+    currency: string
+): Promise<{ success: boolean; error?: string }> {
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
+
+    // Get the creditor's name
+    const { data: creditor } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", creditorUserId)
+        .single();
+
+    // Get the group name
+    const { data: group } = await supabase
+        .from("groups")
+        .select("name")
+        .eq("id", groupId)
+        .single();
+
+    const creditorName = creditor?.full_name || "Someone";
+    const groupName = group?.name || "a group";
+
+    // Format amount with currency
+    const { formatCurrency } = await import("@/lib/currency");
+    const formattedAmount = formatCurrency(amount, currency);
+
+    // Create the notification
+    const { error } = await supabase
+        .from("notifications")
+        .insert({
+            user_id: debtorUserId,
+            type: "payment_reminder",
+            title: "💸 Payment Reminder",
+            message: `${creditorName} is requesting ${formattedAmount} in ${groupName}`,
+            data: {
+                group_id: groupId,
+                creditor_id: creditorUserId,
+                amount: amount,
+                currency: currency,
+            },
+            action_url: `/groups/${encryptUrlId(groupId)}`,
+        });
+
+    if (error) {
+        console.error("Failed to send reminder:", error);
+        return { success: false, error: "Failed to send reminder" };
+    }
+
+    // Log activity
+    await supabase.from("activities").insert({
+        group_id: groupId,
+        user_id: creditorUserId,
+        entity_type: "settlement",
+        entity_id: null,
+        action: "reminded",
+        metadata: {
+            debtor_id: debtorUserId,
+            amount: amount,
+            currency: currency,
+        },
+    });
+
+    return { success: true };
+}

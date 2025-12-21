@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { QRScanner } from "@/components/ui/qr-scanner";
 import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
-import { encryptUrlId } from "@/lib/url-ids";
+import { getEncryptedGroupUrl } from "@/app/(dashboard)/actions";
 
 interface JoinGroupFormProps {
     initialCode: string;
@@ -103,8 +103,9 @@ export function JoinGroupForm({ initialCode, userId }: JoinGroupFormProps) {
             toast.success(`Welcome to ${groupPreview.name}!`);
 
             // Redirect after a short delay
-            setTimeout(() => {
-                router.push(`/groups/${encryptUrlId(result.groupId || "")}`);
+            setTimeout(async () => {
+                const encryptedUrl = await getEncryptedGroupUrl(result.groupId || "");
+                router.push(encryptedUrl);
             }, 2000);
         } catch {
             setError("Failed to join group");

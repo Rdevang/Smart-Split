@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 import { onGroupMutation } from "@/app/(dashboard)/actions";
-import { encryptUrlId } from "@/lib/url-ids";
+import { getEncryptedGroupUrl } from "@/app/(dashboard)/actions";
 
 const groupSchema = z.object({
     name: z.string().min(1, "Group name is required").max(100, "Name too long"),
@@ -108,7 +108,8 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
                 }
 
                 toast.success(`Group "${data.name}" created!`);
-                router.push(`/groups/${encryptUrlId(result.group?.id || "")}`);
+                const encryptedUrl = await getEncryptedGroupUrl(result.group?.id || "");
+                window.location.href = encryptedUrl;
             } else if (initialData?.id) {
                 const result = await groupsService.updateGroup(
                     initialData.id,
@@ -132,8 +133,8 @@ export function GroupForm({ userId, initialData, mode = "create" }: GroupFormPro
                 await onGroupMutation(initialData.id, userId);
 
                 toast.success("Group updated successfully!");
-                router.push(`/groups/${encryptUrlId(initialData.id)}`);
-                router.refresh();
+                const encryptedUrl = await getEncryptedGroupUrl(initialData.id);
+                window.location.href = encryptedUrl;
             }
         } catch {
             setError("An unexpected error occurred");

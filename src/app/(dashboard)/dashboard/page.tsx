@@ -213,7 +213,11 @@ export default async function DashboardPage() {
                     ) : (
                         <div className="grid gap-4">
                             {groups.slice(0, 3).map((group) => (
-                                <GroupCard key={group.id} group={group} />
+                                <GroupCard
+                                    key={group.id}
+                                    group={group}
+                                    encryptedId={encryptUrlId(group.id)}
+                                />
                             ))}
                         </div>
                     )}
