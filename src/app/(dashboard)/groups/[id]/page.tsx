@@ -41,7 +41,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
         // Get pending settlements for this group to filter from SimplifiedDebts
         // Note: Only pending settlements are filtered - completed settlements are already in balance calculation
         supabase
-            .from("pending_settlements")
+            .from("settlements")
             .select("from_user, to_user, amount")
             .eq("group_id", id)
             .eq("status", "pending"),
@@ -51,7 +51,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
         notFound();
     }
 
-    const expenses = expensesResult.data;
+    const expenses = expensesResult.data || [];
     // Only filter PENDING settlements from debt list
     // Completed settlements are already reflected in balance calculation
     // New expenses after settlements should show as new debts
