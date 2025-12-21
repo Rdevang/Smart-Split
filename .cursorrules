@@ -33,7 +33,7 @@
 - **Type**: Expense sharing application (Splitwise clone)
 - **Stack**: Next.js 16 (App Router), TypeScript, Supabase, Tailwind CSS 4
 - **Started**: 2024-12-10
-- **Supabase Project**: cizakzarkdgieclbwljy
+- **Supabase Project**: your-project-ref
 
 ---
 
@@ -331,7 +331,7 @@ describe("Component", () => {
 - Allowed types: image/jpeg, image/png, image/gif, image/webp
 
 ### Type Safety
-- Generate types: `npx supabase gen types typescript --project-id cizakzarkdgieclbwljy > src/types/database.ts`
+- Generate types: `npx supabase gen types typescript --project-id your-project-ref > src/types/database.ts`
 - Use generated types in services
 
 ---
