@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useOptimistic, useTransition, useEffect } from "react";
-import { ArrowRight, Sparkles, CheckCircle2, List, Smartphone, ExternalLink, Bell, Clock } from "lucide-react";
+import { ArrowRight, Sparkles, CheckCircle2, List, Smartphone, Bell, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simplify-debts";
 import { groupsService } from "@/services/groups";
 import { formatCurrency } from "@/lib/currency";
-import { openUpiPayment, generateUpiUrl, isValidUpiId } from "@/lib/upi";
+import { openUpiPayment, isValidUpiId } from "@/lib/upi";
 import { sendPaymentReminder } from "@/app/(dashboard)/actions";
 
 interface ExpenseSplit {
@@ -50,7 +50,7 @@ interface SimplifiedDebtsProps {
  * Each person who owes on an expense pays the person who paid for that expense.
  * Bidirectional debts between the same two people are netted out.
  */
-function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): SimplifiedPayment[] {
+function getRawDebtsFromExpenses(expenses: Expense[]): SimplifiedPayment[] {
     // Track gross debts: key is "fromId-toId", value is the debt info
     const grossDebts = new Map<string, SimplifiedPayment>();
 
@@ -98,7 +98,7 @@ function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): Simp
     const processedPairs = new Set<string>();
     const nettedDebts: SimplifiedPayment[] = [];
 
-    for (const [key, debt] of grossDebts) {
+    for (const [, debt] of grossDebts) {
         // Create a canonical pair key (sorted IDs)
         const pairKey = [debt.from_user_id, debt.to_user_id].sort().join(":");
         if (processedPairs.has(pairKey)) continue;
@@ -158,7 +158,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
         if (isSimplified) {
             rawPayments = simplifyDebts(balances);
         } else {
-            rawPayments = getRawDebtsFromExpenses(expenses, balances);
+            rawPayments = getRawDebtsFromExpenses(expenses);
         }
 
         // Filter out payments that have pending settlements
@@ -258,8 +258,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                 showError("Could not open UPI app. Please ensure you have a UPI app installed.");
             }
         } else {
-            // On desktop, show the UPI ID and copy to clipboard
-            const upiUrl = generateUpiUrl(upiParams);
+            // On desktop, copy UPI ID to clipboard for manual payment
             navigator.clipboard.writeText(upiId);
             info(
                 `UPI ID "${upiId}" copied! Open any UPI app on your phone and pay ₹${payment.amount.toFixed(2)} to ${payment.to_user_name}`,

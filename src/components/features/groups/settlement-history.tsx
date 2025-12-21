@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, ArrowRight, History, ChevronDown, ChevronUp, Hourglass } from "lucide-react";
+import { Clock, ArrowRight, History, ChevronDown, ChevronUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,9 +76,8 @@ export function SettlementHistory({ groupId, currentUserId, initialSettlements, 
     }
 
     const displayedSettlements = isExpanded ? settlements : settlements.slice(0, 3);
-    // Only count approved settlements in total
-    const approvedSettlements = settlements.filter(s => s.status === "approved" || !s.status);
-    const totalSettled = approvedSettlements.reduce((sum, s) => sum + s.amount, 0);
+    // All settlements in history are approved now
+    const totalSettled = settlements.reduce((sum, s) => sum + s.amount, 0);
 
     return (
         <Card>
@@ -97,7 +96,6 @@ export function SettlementHistory({ groupId, currentUserId, initialSettlements, 
                 {displayedSettlements.map((settlement) => {
                     const isFromMe = settlement.from_user === currentUserId;
                     const isToMe = settlement.to_user === currentUserId;
-                    const isPending = settlement.status === "pending";
                     const date = new Date(settlement.settled_at);
                     const formattedDate = date.toLocaleDateString("en-US", {
                         month: "short",
@@ -111,21 +109,11 @@ export function SettlementHistory({ groupId, currentUserId, initialSettlements, 
                     return (
                         <div
                             key={settlement.id}
-                            className={`flex items-center justify-between rounded-lg border p-3 ${isPending
-                                ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20"
-                                : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50"
-                                }`}
+                            className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50"
                         >
                             <div className="flex items-center gap-3">
-                                <div className={`flex h-8 w-8 items-center justify-center rounded-full ${isPending
-                                    ? "bg-amber-100 dark:bg-amber-900/30"
-                                    : "bg-teal-100 dark:bg-teal-900/30"
-                                    }`}>
-                                    {isPending ? (
-                                        <Hourglass className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                                    ) : (
-                                        <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-                                    )}
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/30">
+                                    <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-1.5 text-sm">
@@ -136,11 +124,6 @@ export function SettlementHistory({ groupId, currentUserId, initialSettlements, 
                                         <span className={`font-medium ${isToMe ? "text-teal-600 dark:text-teal-400" : "text-gray-700 dark:text-gray-300"}`}>
                                             {isToMe ? "You" : settlement.to_user_name}
                                         </span>
-                                        {isPending && (
-                                            <Badge variant="warning" className="ml-1 text-[10px]">
-                                                Pending
-                                            </Badge>
-                                        )}
                                     </div>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">
                                         {formattedDate} at {formattedTime}

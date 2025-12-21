@@ -403,7 +403,7 @@ export const groupsServerService = {
                 to_placeholder:placeholder_members!settlements_to_placeholder_id_fkey(id, name)
             `)
             .eq("group_id", groupId)
-            .in("status", ["approved", "pending"])
+            .eq("status", "approved") // Only show approved settlements in history
             .order("settled_at", { ascending: false, nullsFirst: false })
             .order("requested_at", { ascending: false });
 
