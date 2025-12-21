@@ -22,18 +22,25 @@ interface Expense {
     splits: ExpenseSplit[];
 }
 
+interface PendingSettlement {
+    from_user: string;
+    to_user: string;
+    amount: number;
+}
+
 interface SimplifiedDebtsClientProps {
     groupId: string;
     balances: Balance[];
     expenses: Expense[];
     currentUserId: string;
     currency?: string;
+    pendingSettlements?: PendingSettlement[];
 }
 
 /**
  * Client wrapper for SimplifiedDebts that handles page refresh after settlement
  */
-export function SimplifiedDebtsClient({ groupId, balances, expenses, currentUserId, currency = "USD" }: SimplifiedDebtsClientProps) {
+export function SimplifiedDebtsClient({ groupId, balances, expenses, currentUserId, currency = "USD", pendingSettlements = [] }: SimplifiedDebtsClientProps) {
     const router = useRouter();
 
     const handleSettle = async (fromUserId: string, toUserId: string) => {
@@ -50,6 +57,7 @@ export function SimplifiedDebtsClient({ groupId, balances, expenses, currentUser
             expenses={expenses}
             currentUserId={currentUserId}
             currency={currency}
+            pendingSettlements={pendingSettlements}
             onSettle={handleSettle}
         />
     );

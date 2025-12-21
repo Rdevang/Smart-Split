@@ -33,11 +33,22 @@ export default async function GroupPage({ params }: GroupPageProps) {
     }
 
     // Using CACHED services for lightning-fast page loads
-    const [group, expensesResult, balances, settlements] = await Promise.all([
+    const [group, expensesResult, balances, settlements, pendingSettlementsResult, completedSettlementsResult] = await Promise.all([
         groupsCachedServerService.getGroup(id),
         expensesCachedServerService.getExpenses(id),
         groupsCachedServerService.getGroupBalances(id),
         groupsCachedServerService.getSettlementsWithNames(id),
+        // Get pending settlements for this group to filter from SimplifiedDebts
+        supabase
+            .from("pending_settlements")
+            .select("from_user, to_user, amount")
+            .eq("group_id", id)
+            .eq("status", "pending"),
+        // Get completed settlements (from settlements table) to also filter from SimplifiedDebts
+        supabase
+            .from("settlements")
+            .select("from_user, to_user, amount")
+            .eq("group_id", id),
     ]);
 
     if (!group) {
@@ -45,6 +56,11 @@ export default async function GroupPage({ params }: GroupPageProps) {
     }
 
     const expenses = expensesResult.data;
+    // Combine pending and completed settlements to filter from debt list
+    const pendingSettlements = [
+        ...(pendingSettlementsResult.data || []),
+        ...(completedSettlementsResult.data || []),
+    ];
     const isAdmin = await groupsCachedServerService.isUserAdmin(id, user.id);
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
     const userBalance = balances.find((b) => b.user_id === user.id)?.balance || 0;
@@ -304,6 +320,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         expenses={expenses}
                         currentUserId={user.id}
                         currency={currency}
+                        pendingSettlements={pendingSettlements}
                     />
 
                     {/* Settlement History */}

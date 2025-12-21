@@ -29,12 +29,19 @@ interface Expense {
     splits: ExpenseSplit[];
 }
 
+interface PendingSettlement {
+    from_user: string;
+    to_user: string;
+    amount: number;
+}
+
 interface SimplifiedDebtsProps {
     groupId: string;
     balances: Balance[];
     expenses: Expense[];
     currentUserId: string;
     currency?: string;
+    pendingSettlements?: PendingSettlement[];
     onSettle?: (fromUserId: string, toUserId: string) => void;
 }
 
@@ -125,7 +132,7 @@ function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): Simp
     return nettedDebts;
 }
 
-export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, currency = "USD", onSettle }: SimplifiedDebtsProps) {
+export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, currency = "USD", pendingSettlements = [], onSettle }: SimplifiedDebtsProps) {
     const [isSimplified, setIsSimplified] = useState(true);
     const { success, error: showError, info } = useToast();
 
@@ -147,11 +154,26 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
     const [remindingUser, setRemindingUser] = useState<string | null>(null);
 
     const payments = useMemo(() => {
+        let rawPayments: SimplifiedPayment[];
         if (isSimplified) {
-            return simplifyDebts(balances);
+            rawPayments = simplifyDebts(balances);
+        } else {
+            rawPayments = getRawDebtsFromExpenses(expenses, balances);
         }
-        return getRawDebtsFromExpenses(expenses, balances);
-    }, [balances, expenses, isSimplified]);
+
+        // Filter out payments that have pending settlements
+        if (pendingSettlements.length > 0) {
+            return rawPayments.filter(payment => {
+                // Check if there's a pending settlement for this exact payment pair
+                const hasPending = pendingSettlements.some(
+                    ps => ps.from_user === payment.from_user_id && ps.to_user === payment.to_user_id
+                );
+                return !hasPending;
+            });
+        }
+
+        return rawPayments;
+    }, [balances, expenses, isSimplified, pendingSettlements]);
 
     // Check if we're on mobile
     useEffect(() => {

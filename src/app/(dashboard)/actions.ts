@@ -219,7 +219,7 @@ export async function sendPaymentReminder(
                 amount: amount,
                 currency: currencyCode,
             },
-            action_url: `/groups/${encryptUrlId(groupId)}`,
+            action_url: `/groups/${groupId}`,
         });
 
     if (error) {
