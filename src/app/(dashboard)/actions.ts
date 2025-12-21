@@ -10,6 +10,8 @@ import {
     revalidateUserTags
 } from "@/lib/cache-tags";
 import { encryptUrlId } from "@/lib/url-ids";
+import { createClient } from "@/lib/supabase/server";
+import { formatCurrency } from "@/lib/currency";
 
 // ============================================
 // HYBRID CACHE INVALIDATION
@@ -181,9 +183,8 @@ export async function sendPaymentReminder(
     debtorUserId: string,
     creditorUserId: string,
     amount: number,
-    currency: string
+    currencyCode: string
 ): Promise<{ success: boolean; error?: string }> {
-    const { createClient } = await import("@/lib/supabase/server");
     const supabase = await createClient();
 
     // Get the creditor's name
@@ -202,10 +203,7 @@ export async function sendPaymentReminder(
 
     const creditorName = creditor?.full_name || "Someone";
     const groupName = group?.name || "a group";
-
-    // Format amount with currency
-    const { formatCurrency } = await import("@/lib/currency");
-    const formattedAmount = formatCurrency(amount, currency);
+    const formattedAmount = formatCurrency(amount, currencyCode);
 
     // Create the notification
     const { error } = await supabase
@@ -219,7 +217,7 @@ export async function sendPaymentReminder(
                 group_id: groupId,
                 creditor_id: creditorUserId,
                 amount: amount,
-                currency: currency,
+                currency: currencyCode,
             },
             action_url: `/groups/${encryptUrlId(groupId)}`,
         });
@@ -239,7 +237,7 @@ export async function sendPaymentReminder(
         metadata: {
             debtor_id: debtorUserId,
             amount: amount,
-            currency: currency,
+            currency: currencyCode,
         },
     });
 
