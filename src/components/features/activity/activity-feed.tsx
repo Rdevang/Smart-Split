@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "@/components/ui/link";
+import { encryptUrlId } from "@/lib/url-ids";
 import type { ActivityWithDetails } from "@/services/activities.server";
 
 interface ActivityFeedProps {
@@ -186,7 +187,7 @@ export function ActivityFeed({ activities, showGroupName = true }: ActivityFeedP
                                                         <>
                                                             <span>•</span>
                                                             <Link
-                                                                href={`/groups/${activity.group.id}`}
+                                                                href={`/groups/${encryptUrlId(activity.group.id)}`}
                                                                 className="text-teal-600 hover:underline dark:text-teal-400"
                                                             >
                                                                 {activity.group.name}

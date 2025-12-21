@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Image from "next/image";
-import { User, Mail, Phone, Globe, Camera, Trash2, Loader2, Upload } from "lucide-react";
+import { User, Mail, Phone, Globe, Camera, Trash2, Loader2, Upload, Wallet } from "lucide-react";
 import {
     Button,
     Input,
@@ -19,11 +19,17 @@ import {
 } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { profileService } from "@/services/profile";
+import { updateProfile } from "./actions";
+import { isValidUpiId } from "@/lib/upi";
 
 const profileSchema = z.object({
     full_name: z.string().min(2, "Name must be at least 2 characters"),
     phone: z.string().optional(),
     currency: z.string(),
+    upi_id: z.string().optional().refine(
+        (val) => !val || isValidUpiId(val),
+        "Invalid UPI ID format (e.g., name@upi, 9876543210@paytm)"
+    ),
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
@@ -36,6 +42,7 @@ interface ProfileFormProps {
         avatar_url: string | null;
         phone: string | null;
         currency: string;
+        upi_id: string | null;
     };
 }
 
@@ -59,6 +66,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
             full_name: user.full_name || "",
             phone: user.phone || "",
             currency: user.currency || "USD",
+            upi_id: user.upi_id || "",
         },
     });
 
@@ -66,10 +74,12 @@ export function ProfileForm({ user }: ProfileFormProps) {
         setIsLoading(true);
 
         try {
-            const result = await profileService.updateProfile(user.id, {
+            // Use server action for profile update (handles encryption server-side)
+            const result = await updateProfile(user.id, {
                 full_name: data.full_name,
                 phone: data.phone || null,
                 currency: data.currency,
+                upi_id: data.upi_id || null,
             });
 
             if (!result.success) {
@@ -335,6 +345,18 @@ export function ProfileForm({ user }: ProfileFormProps) {
                                         ))}
                                     </select>
                                 </div>
+                            </div>
+
+                            <div className="relative sm:col-span-2">
+                                <Wallet className="absolute top-9 left-3 h-5 w-5 text-gray-400" />
+                                <Input
+                                    label="UPI ID"
+                                    placeholder="yourname@upi or 9876543210@paytm"
+                                    className="pl-10"
+                                    {...register("upi_id")}
+                                    error={errors.upi_id?.message}
+                                    helperText="Used for receiving payments from group members"
+                                />
                             </div>
                         </div>
 

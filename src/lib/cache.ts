@@ -540,7 +540,10 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
  */
 export async function invalidateGroupCache(groupId: string): Promise<void> {
     const redis = getRedis();
-    if (!redis) return;
+    if (!redis) {
+        console.log(`[Cache] No Redis connection, skipping invalidation for group ${groupId}`);
+        return;
+    }
 
     const keysToInvalidate = [
         // Group data
@@ -562,7 +565,8 @@ export async function invalidateGroupCache(groupId: string): Promise<void> {
     ];
 
     try {
-        await redis.del(...keysToInvalidate);
+        const result = await redis.del(...keysToInvalidate);
+        console.log(`[Cache] Invalidated ${result} keys for group ${groupId}`);
     } catch (error) {
         console.error(`Failed to invalidate group cache ${groupId}:`, error);
     }

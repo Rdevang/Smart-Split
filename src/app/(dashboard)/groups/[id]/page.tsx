@@ -15,13 +15,16 @@ import { PendingSettlements } from "@/components/features/groups/pending-settlem
 import { groupsCachedServerService } from "@/services/groups.cached.server";
 import { expensesCachedServerService } from "@/services/expenses.cached.server";
 import { formatCurrency } from "@/lib/currency";
+import { decryptUrlId, encryptUrlId } from "@/lib/url-ids";
 
 interface GroupPageProps {
     params: Promise<{ id: string }>;
 }
 
 export default async function GroupPage({ params }: GroupPageProps) {
-    const { id } = await params;
+    const { id: encryptedId } = await params;
+    // Decrypt URL ID to get real database UUID
+    const id = decryptUrlId(encryptedId);
     const supabase = await createClient();
     const { data: { user }, error } = await supabase.auth.getUser();
 
@@ -80,14 +83,14 @@ export default async function GroupPage({ params }: GroupPageProps) {
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Link href={`/groups/${id}/expenses/new`}>
+                    <Link href={`/groups/${encryptUrlId(id)}/expenses/new`}>
                         <Button>
                             <Plus className="mr-2 h-4 w-4" />
                             Add Expense
                         </Button>
                     </Link>
                     {expenses.length > 0 && (
-                        <Link href={`/groups/${id}/analytics`}>
+                        <Link href={`/groups/${encryptUrlId(id)}/analytics`}>
                             <Button variant="outline">
                                 <BarChart3 className="mr-2 h-4 w-4" />
                                 Analytics
@@ -100,7 +103,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         inviteCode={group.invite_code}
                     />
                     {isAdmin && (
-                        <Link href={`/groups/${id}/settings`}>
+                        <Link href={`/groups/${encryptUrlId(id)}/settings`}>
                             <Button variant="outline" size="icon">
                                 <Settings className="h-4 w-4" />
                             </Button>

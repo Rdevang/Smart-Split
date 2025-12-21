@@ -15,7 +15,7 @@ export function CameraCapture({ onCapture, onClose, isOpen }: CameraCaptureProps
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
-    
+
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -41,12 +41,12 @@ export function CameraCapture({ onCapture, onClose, isOpen }: CameraCaptureProps
             });
 
             streamRef.current = stream;
-            
+
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
                 await videoRef.current.play();
             }
-            
+
             setIsLoading(false);
         } catch (err) {
             console.error("Camera error:", err);
@@ -106,7 +106,7 @@ export function CameraCapture({ onCapture, onClose, isOpen }: CameraCaptureProps
         // Get the image data URL
         const imageDataUrl = canvas.toDataURL("image/jpeg", 0.9);
         setCapturedImage(imageDataUrl);
-        
+
         // Stop camera preview
         stopCamera();
     };
@@ -116,14 +116,24 @@ export function CameraCapture({ onCapture, onClose, isOpen }: CameraCaptureProps
         startCamera(facingMode);
     };
 
-    const handleConfirm = async () => {
+    const handleConfirm = () => {
         if (!capturedImage) return;
 
-        // Convert data URL to File
-        const response = await fetch(capturedImage);
-        const blob = await response.blob();
-        const file = new File([blob], `camera-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
-        
+        // Convert data URL to File without using fetch (CSP-safe)
+        const [header, base64Data] = capturedImage.split(",");
+        const mimeMatch = header.match(/:(.*?);/);
+        const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+
+        // Decode base64 to binary
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const blob = new Blob([bytes], { type: mimeType });
+        const file = new File([blob], `camera-photo-${Date.now()}.jpg`, { type: mimeType });
+
         onCapture(file);
         onClose();
     };

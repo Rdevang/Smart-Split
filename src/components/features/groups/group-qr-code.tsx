@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
     Copy,
@@ -30,11 +30,13 @@ export function GroupQRCode({ groupId, groupName, inviteCode, isAdmin }: GroupQR
     const [copied, setCopied] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
     const [isRegenerating, setIsRegenerating] = useState(false);
+    const [siteUrl, setSiteUrl] = useState(process.env.NEXT_PUBLIC_SITE_URL || "");
     const qrRef = useRef<HTMLDivElement>(null);
 
-    const siteUrl = typeof window !== "undefined"
-        ? window.location.origin
-        : process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    // Get actual site URL on client side (avoids hydration mismatch)
+    useEffect(() => {
+        setSiteUrl(window.location.origin);
+    }, []);
 
     const joinUrl = `${siteUrl}/groups/join?code=${code}`;
 

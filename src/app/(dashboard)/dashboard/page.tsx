@@ -13,6 +13,7 @@ import { PendingSettlements } from "@/components/features/groups/pending-settlem
 import { groupsCachedServerService } from "@/services/groups.cached.server";
 import { expensesCachedServerService } from "@/services/expenses.cached.server";
 import { formatCurrency } from "@/lib/currency";
+import { encryptUrlId } from "@/lib/url-ids";
 
 export default async function DashboardPage() {
     const supabase = await createClient();
@@ -87,7 +88,7 @@ export default async function DashboardPage() {
                         </Button>
                     </Link>
                     {groups.length > 0 && (
-                        <Link href={`/groups/${groups[0].id}/expenses/new`}>
+                        <Link href={`/groups/${encryptUrlId(groups[0].id)}/expenses/new`}>
                             <Button size="sm" className="text-xs sm:text-sm">
                                 <Plus className="mr-1.5 h-4 w-4" />
                                 <span className="hidden sm:inline">Add Expense</span>

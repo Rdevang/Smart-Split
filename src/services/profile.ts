@@ -7,6 +7,7 @@ export interface ProfileData {
     avatar_url: string | null;
     phone: string | null;
     currency: string;
+    upi_id: string | null;
 }
 
 export interface UpdateProfileInput {
@@ -14,6 +15,7 @@ export interface UpdateProfileInput {
     phone?: string | null;
     currency?: string;
     avatar_url?: string | null;
+    upi_id?: string | null;
 }
 
 export const profileService = {
@@ -22,7 +24,7 @@ export const profileService = {
 
         const { data, error } = await supabase
             .from("profiles")
-            .select("id, email, full_name, avatar_url, phone, currency")
+            .select("id, email, full_name, avatar_url, phone, currency, upi_id")
             .eq("id", userId)
             .single();
 
@@ -31,12 +33,14 @@ export const profileService = {
             return null;
         }
 
+        // Note: UPI ID is stored encrypted - use server action getDecryptedUpiId() to decrypt
         return data;
     },
 
     async updateProfile(userId: string, input: UpdateProfileInput): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
 
+        // Note: For UPI ID updates, use the server action updateProfile() which handles encryption
         const { error } = await supabase
             .from("profiles")
             .update({
@@ -177,6 +181,26 @@ export const profileService = {
         });
 
         return { success: true };
+    },
+
+    /**
+     * Get raw UPI ID for a specific user (encrypted value from DB)
+     * Note: Use server action getDecryptedUpiId() to get decrypted value
+     */
+    async getUpiId(userId: string): Promise<string | null> {
+        const supabase = createClient();
+
+        const { data, error } = await supabase
+            .from("profiles")
+            .select("upi_id")
+            .eq("id", userId)
+            .single();
+
+        if (error || !data || !data.upi_id) {
+            return null;
+        }
+
+        return data.upi_id;
     },
 
     // ============================================

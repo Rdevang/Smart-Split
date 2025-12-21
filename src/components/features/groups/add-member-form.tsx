@@ -79,16 +79,18 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
 
         if (!result.success) {
             toast.error(result.error || "Failed to add member");
+            setAddingFriendId(null);
         } else {
-            // Invalidate cache for the group
+            // Invalidate cache for the group - must complete before refresh
             await onMemberAdded(groupId, friend.is_placeholder ? undefined : friend.id);
             toast.success(`${friend.name} added to group!`);
             // Remove from available friends list
             setFriends((prev) => prev.filter((f) => f.id !== friend.id));
-            router.refresh();
+            setAddingFriendId(null);
+            // Force page refresh to get fresh data
+            // Use window.location.reload() for guaranteed fresh data if router.refresh() doesn't work
+            window.location.reload();
         }
-
-        setAddingFriendId(null);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -122,8 +124,9 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
         if (!result.success) {
             setError(result.error || "Failed to add member");
             toast.error(result.error || "Failed to add member");
+            setIsLoading(false);
         } else {
-            // Invalidate cache for the group
+            // Invalidate cache for the group - must complete before refresh
             await onMemberAdded(groupId);
             
             if (result.inviteSent) {
@@ -134,10 +137,10 @@ export function AddMemberForm({ groupId, userId, existingMemberIds = [], existin
             setEmail("");
             setName("");
             setPlaceholderEmail("");
-            router.refresh();
+            setIsLoading(false);
+            // Force page refresh to get fresh data
+            window.location.reload();
         }
-
-        setIsLoading(false);
     };
 
     return (

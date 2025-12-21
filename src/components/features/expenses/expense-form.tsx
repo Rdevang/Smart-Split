@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/components/ui/toast";
 import { expensesService } from "@/services/expenses";
 import { onExpenseMutation } from "@/app/(dashboard)/actions";
+import { encryptUrlId } from "@/lib/url-ids";
 import type { Database } from "@/types/database";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
@@ -257,7 +258,7 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
             await onExpenseMutation(group.id, paidByUserId, participantIds);
 
             toast.success(`Expense "$${totalAmount.toFixed(2)}" added successfully!`);
-            router.push(`/groups/${group.id}`);
+            router.push(`/groups/${encryptUrlId(group.id)}`);
             router.refresh();
         } catch {
             setError("An unexpected error occurred");

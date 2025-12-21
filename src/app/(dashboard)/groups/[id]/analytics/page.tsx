@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { groupsCachedServerService } from "@/services/groups.cached.server";
 import { expensesCachedServerService } from "@/services/expenses.cached.server";
 import { formatCurrency } from "@/lib/currency";
+import { decryptUrlId, encryptUrlId } from "@/lib/url-ids";
 import {
     CategoryChart,
     TrendChart,
@@ -21,7 +22,9 @@ interface AnalyticsPageProps {
 }
 
 export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
-    const { id } = await params;
+    const { id: encryptedId } = await params;
+    // Decrypt URL ID to get real database UUID
+    const id = decryptUrlId(encryptedId);
     const supabase = await createClient();
     const { data: { user }, error } = await supabase.auth.getUser();
 
@@ -68,7 +71,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
         <div className="space-y-8">
             {/* Back Link */}
             <Link
-                href={`/groups/${id}`}
+                href={`/groups/${encryptUrlId(id)}`}
                 className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
                 <ArrowLeft className="h-4 w-4" />
@@ -100,7 +103,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
                         <p className="mt-2 text-center text-gray-500 dark:text-gray-400">
                             Add some expenses to see analytics
                         </p>
-                        <Link href={`/groups/${id}/expenses/new`} className="mt-6">
+                        <Link href={`/groups/${encryptUrlId(id)}/expenses/new`} className="mt-6">
                             <Button>Add First Expense</Button>
                         </Link>
                     </CardContent>

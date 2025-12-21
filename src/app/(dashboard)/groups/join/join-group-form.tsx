@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { QRScanner } from "@/components/ui/qr-scanner";
 import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
+import { encryptUrlId } from "@/lib/url-ids";
 
 interface JoinGroupFormProps {
     initialCode: string;
@@ -103,7 +104,7 @@ export function JoinGroupForm({ initialCode, userId }: JoinGroupFormProps) {
 
             // Redirect after a short delay
             setTimeout(() => {
-                router.push(`/groups/${result.groupId}`);
+                router.push(`/groups/${encryptUrlId(result.groupId || "")}`);
             }, 2000);
         } catch {
             setError("Failed to join group");

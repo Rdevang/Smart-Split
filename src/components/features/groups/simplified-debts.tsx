@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useOptimistic, useTransition } from "react";
-import { ArrowRight, Sparkles, CheckCircle2, List } from "lucide-react";
+import { useState, useMemo, useOptimistic, useTransition, useEffect } from "react";
+import { ArrowRight, Sparkles, CheckCircle2, List, Smartphone, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simplify-debts";
 import { groupsService } from "@/services/groups";
 import { formatCurrency } from "@/lib/currency";
+import { openUpiPayment, generateUpiUrl, isValidUpiId } from "@/lib/upi";
 
 interface ExpenseSplit {
     user_id: string | null;
@@ -125,7 +126,7 @@ function getRawDebtsFromExpenses(expenses: Expense[], balances: Balance[]): Simp
 
 export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, currency = "USD", onSettle }: SimplifiedDebtsProps) {
     const [isSimplified, setIsSimplified] = useState(true);
-    const { success, error: showError } = useToast();
+    const { success, error: showError, info } = useToast();
     
     // Optimistic UI: Track settled payments with immediate UI update
     const [isPending, startTransition] = useTransition();
@@ -134,6 +135,11 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
         (current: Set<string>, paymentKey: string) => new Set([...current, paymentKey])
     );
     const [pendingPaymentKey, setPendingPaymentKey] = useState<string | null>(null);
+    
+    // UPI IDs for payees (userId -> upiId)
+    const [payeeUpiIds, setPayeeUpiIds] = useState<Record<string, string | null>>({});
+    const [currentUserHasUpi, setCurrentUserHasUpi] = useState<boolean | null>(null);
+    const [isMobile, setIsMobile] = useState(false);
 
     const payments = useMemo(() => {
         if (isSimplified) {
@@ -141,6 +147,99 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
         }
         return getRawDebtsFromExpenses(expenses, balances);
     }, [balances, expenses, isSimplified]);
+
+    // Check if we're on mobile
+    useEffect(() => {
+        setIsMobile(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    }, []);
+
+    // Check if current user has UPI ID set (for showing tip)
+    useEffect(() => {
+        const checkCurrentUserUpi = async () => {
+            try {
+                const response = await fetch(`/api/upi/${currentUserId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setCurrentUserHasUpi(!!data.upi_id);
+                } else {
+                    setCurrentUserHasUpi(false);
+                }
+            } catch {
+                setCurrentUserHasUpi(false);
+            }
+        };
+        checkCurrentUserUpi();
+    }, [currentUserId]);
+
+    // Fetch UPI IDs for all payees (people receiving money)
+    // Uses server API to decrypt encrypted UPI IDs
+    useEffect(() => {
+        const fetchUpiIds = async () => {
+            const payeeIds = payments
+                .filter(p => p.from_user_id === currentUserId && !p.to_is_placeholder)
+                .map(p => p.to_user_id);
+            
+            const uniquePayeeIds = [...new Set(payeeIds)];
+            
+            const upiIdMap: Record<string, string | null> = {};
+            for (const payeeId of uniquePayeeIds) {
+                try {
+                    // Fetch decrypted UPI ID from server API
+                    const response = await fetch(`/api/upi/${payeeId}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        upiIdMap[payeeId] = data.upi_id;
+                    } else {
+                        upiIdMap[payeeId] = null;
+                    }
+                } catch {
+                    upiIdMap[payeeId] = null;
+                }
+            }
+            
+            setPayeeUpiIds(upiIdMap);
+        };
+
+        if (payments.length > 0) {
+            fetchUpiIds();
+        }
+    }, [payments, currentUserId]);
+
+    // Handle UPI payment
+    const handleUpiPayment = (payment: SimplifiedPayment) => {
+        const upiId = payeeUpiIds[payment.to_user_id];
+        
+        if (!upiId || !isValidUpiId(upiId)) {
+            showError(`${payment.to_user_name} hasn't set up their UPI ID yet`);
+            return;
+        }
+
+        const upiParams = {
+            upiId: upiId,
+            payeeName: payment.to_user_name,
+            amount: payment.amount,
+            currency: "INR", // UPI only works with INR
+            note: `Smart Split: Settlement to ${payment.to_user_name}`,
+        };
+
+        if (isMobile) {
+            // On mobile, open UPI app
+            const opened = openUpiPayment(upiParams);
+            if (opened) {
+                info(`Opening payment app to pay ${payment.to_user_name}`, "UPI Payment");
+            } else {
+                showError("Could not open UPI app. Please ensure you have a UPI app installed.");
+            }
+        } else {
+            // On desktop, show the UPI ID and copy to clipboard
+            const upiUrl = generateUpiUrl(upiParams);
+            navigator.clipboard.writeText(upiId);
+            info(
+                `UPI ID "${upiId}" copied! Open any UPI app on your phone and pay ₹${payment.amount.toFixed(2)} to ${payment.to_user_name}`,
+                "Pay via UPI"
+            );
+        }
+    };
 
     if (payments.length === 0) {
         return (
@@ -296,14 +395,38 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                                                 ✓ Settled
                                             </Badge>
                                         ) : youOwe ? (
-                                            <Button
-                                                size="sm"
-                                                variant="primary"
-                                                isLoading={settlingThis}
-                                                onClick={() => handleSettle(payment)}
-                                            >
-                                                Settle
-                                            </Button>
+                                            <div className="flex items-center gap-2">
+                                                {/* UPI Payment Button - only show if payee has UPI ID */}
+                                                {!payment.to_is_placeholder && payeeUpiIds[payment.to_user_id] && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleUpiPayment(payment)}
+                                                        className="bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-900/40"
+                                                        title="Pay via UPI"
+                                                    >
+                                                        {isMobile ? (
+                                                            <>
+                                                                <Smartphone className="mr-1.5 h-3.5 w-3.5" />
+                                                                Pay UPI
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                                                                UPI
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    variant="primary"
+                                                    isLoading={settlingThis}
+                                                    onClick={() => handleSettle(payment)}
+                                                >
+                                                    Settle
+                                                </Button>
+                                            </div>
                                         ) : (
                                             <Button
                                                 size="sm"
@@ -365,6 +488,11 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                         : "📋 Showing per-expense debts (who owes each payer)"
                     }
                 </p>
+                {currentUserHasUpi === false && (
+                    <p className="text-xs text-purple-600 dark:text-purple-400 text-center">
+                        💳 Tip: Add your UPI ID in Settings → Profile to receive payments directly
+                    </p>
+                )}
             </CardContent>
         </Card>
     );

@@ -108,13 +108,13 @@ export const groupsServerService = {
                     placeholder_id,
                     role,
                     joined_at,
-                    profile:profiles!group_members_user_id_fkey (
+                    profile:profiles (
                         id,
                         email,
                         full_name,
                         avatar_url
                     ),
-                    placeholder:placeholder_members!group_members_placeholder_id_fkey (
+                    placeholder:placeholder_members (
                         id,
                         name,
                         email
@@ -130,13 +130,36 @@ export const groupsServerService = {
             return { data: [], total: 0, page, limit, hasMore: false };
         }
 
+        // Collect all placeholder IDs that need fallback lookup
+        const allPlaceholderIds: string[] = [];
+        groups.forEach((group) => {
+            (group.group_members || []).forEach((m: RawGroupMember) => {
+                if (m.placeholder_id && !m.placeholder) {
+                    allPlaceholderIds.push(m.placeholder_id);
+                }
+            });
+        });
+
+        // Fallback: Fetch placeholder names separately if join failed
+        const placeholderMap = new Map<string, { id: string; name: string; email: string | null }>();
+        if (allPlaceholderIds.length > 0) {
+            const { data: placeholders } = await supabase
+                .from("placeholder_members")
+                .select("id, name, email")
+                .in("id", allPlaceholderIds);
+
+            (placeholders || []).forEach((p) => {
+                placeholderMap.set(p.id, p);
+            });
+        }
+
         const total = count || 0;
         const data = groups.map((group) => ({
             ...group,
             members: (group.group_members || []).map((m: RawGroupMember) => ({
                 ...m,
                 profile: m.profile || null,
-                placeholder: m.placeholder || null,
+                placeholder: m.placeholder || (m.placeholder_id ? placeholderMap.get(m.placeholder_id) : null) || null,
                 is_placeholder: m.placeholder_id !== null,
             })) as MemberWithProfile[],
             member_count: group.group_members?.length || 0,
@@ -168,13 +191,13 @@ export const groupsServerService = {
                     placeholder_id,
                     role,
                     joined_at,
-                    profile:profiles!group_members_user_id_fkey (
+                    profile:profiles (
                         id,
                         email,
                         full_name,
                         avatar_url
                     ),
-                    placeholder:placeholder_members!group_members_placeholder_id_fkey (
+                    placeholder:placeholder_members (
                         id,
                         name,
                         email
@@ -189,12 +212,30 @@ export const groupsServerService = {
             return null;
         }
 
+        // Collect placeholder IDs that need fallback lookup (join returned null)
+        const placeholderIdsToLookup = (group.group_members || [])
+            .filter((m: RawGroupMember) => m.placeholder_id && !m.placeholder)
+            .map((m: RawGroupMember) => m.placeholder_id as string);
+
+        // Fallback: Fetch placeholder names separately if join failed
+        const placeholderMap = new Map<string, { id: string; name: string; email: string | null }>();
+        if (placeholderIdsToLookup.length > 0) {
+            const { data: placeholders } = await supabase
+                .from("placeholder_members")
+                .select("id, name, email")
+                .in("id", placeholderIdsToLookup);
+
+            (placeholders || []).forEach((p) => {
+                placeholderMap.set(p.id, p);
+            });
+        }
+
         return {
             ...group,
             members: (group.group_members || []).map((m: RawGroupMember) => ({
                 ...m,
                 profile: m.profile || null,
-                placeholder: m.placeholder || null,
+                placeholder: m.placeholder || (m.placeholder_id ? placeholderMap.get(m.placeholder_id) : null) || null,
                 is_placeholder: m.placeholder_id !== null,
             })) as MemberWithProfile[],
             member_count: group.group_members?.length || 0,

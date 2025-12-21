@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Users, Calendar, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { encryptUrlId } from "@/lib/url-ids";
 
 // Generic group type that works with both client and server services
 interface GroupCardGroup {
@@ -41,8 +42,11 @@ export function GroupCard({ group }: GroupCardProps) {
         })
         : "N/A";
 
+    // Encrypt group ID for URL security
+    const encryptedId = encryptUrlId(group.id);
+
     return (
-        <Link href={`/groups/${group.id}`}>
+        <Link href={`/groups/${encryptedId}`}>
             <Card className="group cursor-pointer transition-all hover:border-teal-300 hover:shadow-md dark:hover:border-teal-600">
                 <CardContent className="p-5">
                     <div className="flex items-start justify-between">
