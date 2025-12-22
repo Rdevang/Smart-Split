@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, useOptimistic, useTransition, useEffect } from "react";
-import { ArrowRight, Sparkles, CheckCircle2, List, Smartphone, Bell, Clock } from "lucide-react";
+import { ArrowRight, Sparkles, CheckCircle2, List, Smartphone, Bell, Clock, X, Copy, Check } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { simplifyDebts, type Balance, type SimplifiedPayment } from "@/lib/simplify-debts";
 import { groupsService } from "@/services/groups";
 import { formatCurrency } from "@/lib/currency";
-import { openUpiPayment, isValidUpiId } from "@/lib/upi";
+import { openUpiPayment, isValidUpiId, generateUpiUrl } from "@/lib/upi";
 import { sendPaymentReminder } from "@/app/(dashboard)/actions";
 
 interface ExpenseSplit {
@@ -158,6 +159,17 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
     const [remindedUsers, setRemindedUsers] = useState<Set<string>>(new Set());
     const [remindingUser, setRemindingUser] = useState<string | null>(null);
 
+    // UPI QR modal state
+    const [upiQrData, setUpiQrData] = useState<{
+        upiUrl: string;
+        upiId: string;
+        payeeName: string;
+        amount: number;
+        payment: SimplifiedPayment;
+    } | null>(null);
+    const [copied, setCopied] = useState(false);
+    const [isSettlingFromModal, setIsSettlingFromModal] = useState(false);
+
     const payments = useMemo(() => {
         let rawPayments: SimplifiedPayment[];
         if (isSimplified) {
@@ -275,13 +287,79 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                 showError("Could not open UPI app. Please ensure you have a UPI app installed.");
             }
         } else {
-            // On desktop, copy UPI ID to clipboard for manual payment
-            navigator.clipboard.writeText(upiId);
-            info(
-                `UPI ID "${upiId}" copied! Open any UPI app on your phone and pay ₹${payment.amount.toFixed(2)} to ${payment.to_user_name}`,
-                "Pay via UPI"
-            );
+            // On desktop, show QR code modal
+            const upiUrl = generateUpiUrl(upiParams);
+            setUpiQrData({
+                upiUrl,
+                upiId,
+                payeeName: payment.to_user_name,
+                amount: payment.amount,
+                payment,
+            });
+            setCopied(false);
         }
+    };
+
+    // Handle "I've Paid" from UPI modal - auto-settle
+    const handleSettleFromModal = async () => {
+        if (!upiQrData?.payment) return;
+
+        setIsSettlingFromModal(true);
+        const payment = upiQrData.payment;
+
+        try {
+            const result = await groupsService.recordSettlement(
+                groupId,
+                payment.from_user_id,
+                payment.to_user_id,
+                payment.amount,
+                currentUserId,
+                payment.from_is_placeholder || false,
+                payment.to_is_placeholder || false
+            );
+
+            if (result.success) {
+                const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
+                startTransition(() => {
+                    setOptimisticSettled(paymentKey);
+                });
+
+                if (result.pending) {
+                    success(
+                        `Payment recorded! Awaiting confirmation from ${payment.to_user_name}`,
+                        "Pending Approval"
+                    );
+                } else {
+                    success(
+                        `Payment of ${formatCurrency(payment.amount, currency)} settled!`,
+                        "Payment Complete"
+                    );
+                }
+                closeUpiModal();
+            } else {
+                showError(result.error || "Failed to record settlement");
+            }
+        } catch (err) {
+            console.error("Settlement error:", err);
+            showError("An error occurred while recording the settlement");
+        } finally {
+            setIsSettlingFromModal(false);
+        }
+    };
+
+    // Copy UPI ID to clipboard
+    const handleCopyUpiId = () => {
+        if (upiQrData?.upiId) {
+            navigator.clipboard.writeText(upiQrData.upiId);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    // Close UPI QR modal
+    const closeUpiModal = () => {
+        setUpiQrData(null);
+        setCopied(false);
     };
 
     // Handle sending payment reminder
@@ -390,226 +468,319 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
     );
 
     return (
-        <Card>
-            <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                        {isSimplified ? (
-                            <Sparkles className="h-4 w-4 text-amber-500" />
-                        ) : (
-                            <List className="h-4 w-4 text-blue-500" />
-                        )}
-                        {isSimplified ? "Simplified Debts" : "Raw Debts"}
-                    </CardTitle>
-                    <Badge variant="info">
-                        {payments.length} payment{payments.length !== 1 ? "s" : ""}
-                    </Badge>
-                </div>
-                {/* Simplify Toggle */}
-                <label className="mt-3 flex cursor-pointer items-center gap-3">
-                    <div className="relative">
-                        <input
-                            type="checkbox"
-                            checked={isSimplified}
-                            onChange={(e) => setIsSimplified(e.target.checked)}
-                            className="peer sr-only"
-                        />
-                        <div className="h-5 w-9 rounded-full bg-gray-200 transition-colors peer-checked:bg-teal-500 peer-focus:ring-2 peer-focus:ring-teal-500/20 dark:bg-gray-700" />
-                        <div className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4 shadow-sm" />
-                    </div>
-                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                        Simplify debts
-                        <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
-                            (minimize payments)
-                        </span>
-                    </span>
-                </label>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {/* Payments involving current user */}
-                {myPayments.length > 0 && (
-                    <div className="space-y-3">
-                        <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            Your Payments
-                        </p>
-                        {myPayments.map((payment) => {
-                            const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
-                            const isSettled = settledPayments.has(paymentKey);
-                            const settlingThis = isSettling(paymentKey);
-                            const youOwe = payment.from_user_id === currentUserId;
-                            const hasReminded = remindedUsers.has(payment.from_user_id);
-                            const isReminding = remindingUser === payment.from_user_id;
+        <>
+            {/* UPI QR Code Modal */}
+            {upiQrData && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
+                        {/* Close button */}
+                        <button
+                            onClick={closeUpiModal}
+                            className="absolute right-4 top-4 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
 
-                            return (
-                                <div
-                                    key={paymentKey}
-                                    className={`relative overflow-hidden rounded-lg border transition-all duration-200 ${isSettled
-                                        ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/20"
-                                        : youOwe
-                                            ? "border-orange-200 bg-orange-50/50 hover:border-orange-300 dark:border-orange-800/60 dark:bg-orange-900/10"
-                                            : "border-teal-200 bg-teal-50/50 hover:border-teal-300 dark:border-teal-800/60 dark:bg-teal-900/10"
-                                        }`}
+                        {/* Header */}
+                        <div className="mb-6 text-center">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                                Pay via UPI
+                            </h3>
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                Scan QR code or copy UPI ID
+                            </p>
+                        </div>
+
+                        {/* QR Code */}
+                        <div className="flex justify-center rounded-xl bg-white p-4">
+                            <QRCodeSVG
+                                value={upiQrData.upiUrl}
+                                size={200}
+                                level="M"
+                                includeMargin={true}
+                            />
+                        </div>
+
+                        {/* Payment Details */}
+                        <div className="mt-4 rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">Pay to</span>
+                                <span className="font-medium text-gray-900 dark:text-white">{upiQrData.payeeName}</span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">Amount</span>
+                                <span className="text-lg font-bold text-teal-600 dark:text-teal-400">
+                                    ₹{upiQrData.amount.toFixed(2)}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* UPI ID */}
+                        <div className="mt-4">
+                            <label className="mb-1 block text-xs text-gray-500 dark:text-gray-400">UPI ID</label>
+                            <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+                                <code className="flex-1 truncate text-sm font-mono text-gray-700 dark:text-gray-300">
+                                    {upiQrData.upiId}
+                                </code>
+                                <button
+                                    onClick={handleCopyUpiId}
+                                    className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-teal-600 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-900/30"
                                 >
-                                    {/* Decorative accent */}
-                                    <div className={`absolute left-0 top-0 h-full w-0.5 ${isSettled ? "bg-green-500" : youOwe ? "bg-orange-500" : "bg-teal-500"}`} />
+                                    {copied ? (
+                                        <>
+                                            <Check className="h-3.5 w-3.5" />
+                                            Copied!
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Copy className="h-3.5 w-3.5" />
+                                            Copy
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
 
-                                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 pl-4">
-                                        {/* Left: Avatar + Name */}
-                                        <div className="flex items-center gap-2.5 min-w-0">
-                                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${youOwe
-                                                ? "bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400"
-                                                : "bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400"
-                                                }`}>
-                                                {youOwe
-                                                    ? payment.to_user_name.charAt(0).toUpperCase()
-                                                    : payment.from_user_name.charAt(0).toUpperCase()
-                                                }
+                        {/* I've Paid Button */}
+                        <Button
+                            onClick={handleSettleFromModal}
+                            isLoading={isSettlingFromModal}
+                            className="mt-5 w-full"
+                            variant="primary"
+                        >
+                            <Check className="mr-2 h-4 w-4" />
+                            I&apos;ve Paid via UPI
+                        </Button>
+
+                        {/* Instructions */}
+                        <p className="mt-3 text-center text-xs text-gray-500 dark:text-gray-400">
+                            Scan QR with any UPI app, complete payment, then click above to settle
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="flex items-center gap-2 text-base">
+                            {isSimplified ? (
+                                <Sparkles className="h-4 w-4 text-amber-500" />
+                            ) : (
+                                <List className="h-4 w-4 text-blue-500" />
+                            )}
+                            {isSimplified ? "Simplified Debts" : "Raw Debts"}
+                        </CardTitle>
+                        <Badge variant="info">
+                            {payments.length} payment{payments.length !== 1 ? "s" : ""}
+                        </Badge>
+                    </div>
+                    {/* Simplify Toggle */}
+                    <label className="mt-3 flex cursor-pointer items-center gap-3">
+                        <div className="relative">
+                            <input
+                                type="checkbox"
+                                checked={isSimplified}
+                                onChange={(e) => setIsSimplified(e.target.checked)}
+                                className="peer sr-only"
+                            />
+                            <div className="h-5 w-9 rounded-full bg-gray-200 transition-colors peer-checked:bg-teal-500 peer-focus:ring-2 peer-focus:ring-teal-500/20 dark:bg-gray-700" />
+                            <div className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4 shadow-sm" />
+                        </div>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                            Simplify debts
+                            <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
+                                (minimize payments)
+                            </span>
+                        </span>
+                    </label>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {/* Payments involving current user */}
+                    {myPayments.length > 0 && (
+                        <div className="space-y-3">
+                            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                Your Payments
+                            </p>
+                            {myPayments.map((payment) => {
+                                const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
+                                const isSettled = settledPayments.has(paymentKey);
+                                const settlingThis = isSettling(paymentKey);
+                                const youOwe = payment.from_user_id === currentUserId;
+                                const hasReminded = remindedUsers.has(payment.from_user_id);
+                                const isReminding = remindingUser === payment.from_user_id;
+
+                                return (
+                                    <div
+                                        key={paymentKey}
+                                        className={`relative overflow-hidden rounded-lg border transition-all duration-200 ${isSettled
+                                            ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/20"
+                                            : youOwe
+                                                ? "border-orange-200 bg-orange-50/50 hover:border-orange-300 dark:border-orange-800/60 dark:bg-orange-900/10"
+                                                : "border-teal-200 bg-teal-50/50 hover:border-teal-300 dark:border-teal-800/60 dark:bg-teal-900/10"
+                                            }`}
+                                    >
+                                        {/* Decorative accent */}
+                                        <div className={`absolute left-0 top-0 h-full w-0.5 ${isSettled ? "bg-green-500" : youOwe ? "bg-orange-500" : "bg-teal-500"}`} />
+
+                                        <div className="flex flex-wrap items-center justify-between gap-3 p-3 pl-4">
+                                            {/* Left: Avatar + Name */}
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${youOwe
+                                                    ? "bg-orange-100 text-orange-600 dark:bg-orange-900/50 dark:text-orange-400"
+                                                    : "bg-teal-100 text-teal-600 dark:bg-teal-900/50 dark:text-teal-400"
+                                                    }`}>
+                                                    {youOwe
+                                                        ? payment.to_user_name.charAt(0).toUpperCase()
+                                                        : payment.from_user_name.charAt(0).toUpperCase()
+                                                    }
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <span className={`text-sm font-medium ${youOwe ? "text-orange-700 dark:text-orange-300" : "text-teal-700 dark:text-teal-300"}`}>
+                                                        {youOwe ? "You" : payment.from_user_name}
+                                                    </span>
+                                                    <span className="mx-1.5 text-gray-400">→</span>
+                                                    <span className={`text-sm ${youOwe ? "text-gray-600 dark:text-gray-400" : "text-teal-600 dark:text-teal-400"}`}>
+                                                        {youOwe ? payment.to_user_name : "You"}
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <div className="min-w-0">
-                                                <span className={`text-sm font-medium ${youOwe ? "text-orange-700 dark:text-orange-300" : "text-teal-700 dark:text-teal-300"}`}>
-                                                    {youOwe ? payment.to_user_name : payment.from_user_name}
+
+                                            {/* Right: Amount + Actions */}
+                                            <div className="flex items-center gap-3">
+                                                <span className={`text-base font-bold ${youOwe ? "text-orange-600 dark:text-orange-400" : "text-teal-600 dark:text-teal-400"}`}>
+                                                    {formatCurrency(payment.amount, currency)}
                                                 </span>
-                                                <span className="mx-1.5 text-gray-400">→</span>
-                                                <span className={`text-sm ${youOwe ? "text-gray-600 dark:text-gray-400" : "text-teal-600 dark:text-teal-400"}`}>
-                                                    {youOwe ? "You" : "You"}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    {isSettled ? (
+                                                        <Badge variant="success" className="text-xs">
+                                                            <CheckCircle2 className="mr-1 h-3 w-3" />
+                                                            Settled
+                                                        </Badge>
+                                                    ) : youOwe ? (
+                                                        <>
+                                                            {!payment.to_is_placeholder && payeeUpiIds[payment.to_user_id] && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    onClick={() => handleUpiPayment(payment)}
+                                                                    className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30"
+                                                                >
+                                                                    <Smartphone className="mr-1 h-3.5 w-3.5" />
+                                                                    UPI
+                                                                </Button>
+                                                            )}
+                                                            <Button
+                                                                size="sm"
+                                                                variant="primary"
+                                                                isLoading={settlingThis}
+                                                                onClick={() => handleSettle(payment)}
+                                                            >
+                                                                Settle
+                                                            </Button>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            {!payment.from_is_placeholder && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="ghost"
+                                                                    isLoading={isReminding}
+                                                                    disabled={hasReminded}
+                                                                    onClick={() => handleRemind(payment)}
+                                                                    className={hasReminded
+                                                                        ? "text-gray-400 cursor-not-allowed"
+                                                                        : "text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/30"
+                                                                    }
+                                                                >
+                                                                    {hasReminded ? (
+                                                                        <><Clock className="mr-1 h-3.5 w-3.5" />Sent</>
+                                                                    ) : (
+                                                                        <><Bell className="mr-1 h-3.5 w-3.5" />Remind</>
+                                                                    )}
+                                                                </Button>
+                                                            )}
+                                                            <Button
+                                                                size="sm"
+                                                                variant="primary"
+                                                                isLoading={settlingThis}
+                                                                onClick={() => handleSettle(payment)}
+                                                            >
+                                                                Mark Paid
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
 
-                                        {/* Right: Amount + Actions */}
-                                        <div className="flex items-center gap-3">
-                                            <span className={`text-base font-bold ${youOwe ? "text-orange-600 dark:text-orange-400" : "text-teal-600 dark:text-teal-400"}`}>
+                    {/* Other payments */}
+                    {otherPayments.length > 0 && (
+                        <div className="space-y-3">
+                            <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                Other Settlements
+                            </p>
+                            {otherPayments.map((payment) => {
+                                const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
+                                const isSettled = settledPayments.has(paymentKey);
+
+                                return (
+                                    <div
+                                        key={paymentKey}
+                                        className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${isSettled
+                                            ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/10"
+                                            : "border-gray-200 bg-gray-50/50 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/30"
+                                            }`}
+                                    >
+                                        <div className="flex items-center justify-between p-4">
+                                            <div className="flex items-center gap-3">
+                                                {/* Mini avatars */}
+                                                <div className="flex -space-x-2">
+                                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-600 ring-2 ring-white dark:bg-gray-700 dark:text-gray-300 dark:ring-gray-800">
+                                                        {payment.from_user_name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-300 text-xs font-semibold text-gray-700 ring-2 ring-white dark:bg-gray-600 dark:text-gray-200 dark:ring-gray-800">
+                                                        {payment.to_user_name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-sm">
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                        {payment.from_user_name}
+                                                    </span>
+                                                    <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                        {payment.to_user_name}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <span className="text-base font-semibold text-gray-900 dark:text-white">
                                                 {formatCurrency(payment.amount, currency)}
                                             </span>
-                                            <div className="flex items-center gap-2">
-                                                {isSettled ? (
-                                                    <Badge variant="success" className="text-xs">
-                                                        <CheckCircle2 className="mr-1 h-3 w-3" />
-                                                        Settled
-                                                    </Badge>
-                                                ) : youOwe ? (
-                                                    <>
-                                                        {!payment.to_is_placeholder && payeeUpiIds[payment.to_user_id] && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                onClick={() => handleUpiPayment(payment)}
-                                                                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30"
-                                                            >
-                                                                <Smartphone className="mr-1 h-3.5 w-3.5" />
-                                                                UPI
-                                                            </Button>
-                                                        )}
-                                                        <Button
-                                                            size="sm"
-                                                            variant="primary"
-                                                            isLoading={settlingThis}
-                                                            onClick={() => handleSettle(payment)}
-                                                        >
-                                                            Settle
-                                                        </Button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        {!payment.from_is_placeholder && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                isLoading={isReminding}
-                                                                disabled={hasReminded}
-                                                                onClick={() => handleRemind(payment)}
-                                                                className={hasReminded
-                                                                    ? "text-gray-400 cursor-not-allowed"
-                                                                    : "text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/30"
-                                                                }
-                                                            >
-                                                                {hasReminded ? (
-                                                                    <><Clock className="mr-1 h-3.5 w-3.5" />Sent</>
-                                                                ) : (
-                                                                    <><Bell className="mr-1 h-3.5 w-3.5" />Remind</>
-                                                                )}
-                                                            </Button>
-                                                        )}
-                                                        <Button
-                                                            size="sm"
-                                                            variant="primary"
-                                                            isLoading={settlingThis}
-                                                            onClick={() => handleSettle(payment)}
-                                                        >
-                                                            Mark Paid
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
+                                );
+                            })}
+                        </div>
+                    )}
 
-                {/* Other payments */}
-                {otherPayments.length > 0 && (
-                    <div className="space-y-3">
-                        <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            Other Settlements
-                        </p>
-                        {otherPayments.map((payment) => {
-                            const paymentKey = `${payment.from_user_id}-${payment.to_user_id}`;
-                            const isSettled = settledPayments.has(paymentKey);
-
-                            return (
-                                <div
-                                    key={paymentKey}
-                                    className={`relative overflow-hidden rounded-xl border transition-all duration-200 ${isSettled
-                                        ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-900/10"
-                                        : "border-gray-200 bg-gray-50/50 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800/30"
-                                        }`}
-                                >
-                                    <div className="flex items-center justify-between p-4">
-                                        <div className="flex items-center gap-3">
-                                            {/* Mini avatars */}
-                                            <div className="flex -space-x-2">
-                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-xs font-semibold text-gray-600 ring-2 ring-white dark:bg-gray-700 dark:text-gray-300 dark:ring-gray-800">
-                                                    {payment.from_user_name.charAt(0).toUpperCase()}
-                                                </div>
-                                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-300 text-xs font-semibold text-gray-700 ring-2 ring-white dark:bg-gray-600 dark:text-gray-200 dark:ring-gray-800">
-                                                    {payment.to_user_name.charAt(0).toUpperCase()}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                    {payment.from_user_name}
-                                                </span>
-                                                <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
-                                                <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                    {payment.to_user_name}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <span className="text-base font-semibold text-gray-900 dark:text-white">
-                                            {formatCurrency(payment.amount, currency)}
-                                        </span>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
-                    {isSimplified
-                        ? "💡 Debts are simplified to minimize the number of payments needed"
-                        : "📋 Showing per-expense debts (who owes each payer)"
-                    }
-                </p>
-                {currentUserHasUpi === false && (
-                    <p className="text-xs text-purple-600 dark:text-purple-400 text-center">
-                        💳 Tip: Add your UPI ID in Settings → Profile to receive payments directly
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
+                        {isSimplified
+                            ? "💡 Debts are simplified to minimize the number of payments needed"
+                            : "📋 Showing per-expense debts (who owes each payer)"
+                        }
                     </p>
-                )}
-            </CardContent>
-        </Card>
+                    {currentUserHasUpi === false && (
+                        <p className="text-xs text-purple-600 dark:text-purple-400 text-center">
+                            💳 Tip: Add your UPI ID in Settings → Profile to receive payments directly
+                        </p>
+                    )}
+                </CardContent>
+            </Card>
+        </>
     );
 }

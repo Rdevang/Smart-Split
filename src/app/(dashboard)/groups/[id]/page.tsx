@@ -51,7 +51,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
         notFound();
     }
 
-    const expenses = expensesResult.data;
+    const expenses = expensesResult.data || [];
     // Only filter PENDING settlements from debt list
     // Completed settlements are already reflected in balance calculation
     // New expenses after settlements should show as new debts
