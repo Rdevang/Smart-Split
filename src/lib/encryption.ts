@@ -63,11 +63,12 @@ export function encrypt(plaintext: string): string {
 
 /**
  * Decrypt an encrypted string value
+ * Returns null on decryption failure (not empty string)
  */
-export function decrypt(ciphertext: string): string {
-    if (!ciphertext) return ciphertext;
+export function decrypt(ciphertext: string): string | null {
+    if (!ciphertext) return null;
 
-    // Not encrypted (plain text or invalid format)
+    // Not encrypted (plain text or invalid format) - return as-is
     if (!ciphertext.startsWith(ENCRYPTED_PREFIX)) {
         return ciphertext;
     }
@@ -97,8 +98,8 @@ export function decrypt(ciphertext: string): string {
         return decrypted;
     } catch (error) {
         console.error("Decryption failed:", error);
-        // Return empty string on decryption failure (data might be corrupted)
-        return "";
+        // Return null on decryption failure so callers can handle it properly
+        return null;
     }
 }
 
@@ -130,6 +131,7 @@ export function encryptFields<T extends Record<string, unknown>>(
 
 /**
  * Decrypt sensitive fields in an object
+ * Note: Fields that fail decryption will be set to null
  */
 export function decryptFields<T extends Record<string, unknown>>(
     data: T,
@@ -140,7 +142,8 @@ export function decryptFields<T extends Record<string, unknown>>(
     for (const field of fieldsToDecrypt) {
         const value = result[field];
         if (typeof value === "string" && value) {
-            result[field] = decrypt(value) as T[keyof T];
+            const decrypted = decrypt(value);
+            result[field] = (decrypted ?? null) as T[keyof T];
         }
     }
 

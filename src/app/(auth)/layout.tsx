@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Wallet } from "lucide-react";
 import type { Metadata } from "next";
+import { AuthTestimonial } from "@/components/features/reviews/auth-testimonial";
 
 export const metadata: Metadata = {
     title: "Sign In",
@@ -42,21 +43,8 @@ export default function AuthLayout({
                         <span className="text-2xl font-bold text-white">SmartSplit</span>
                     </Link>
 
-                    {/* Testimonial/Quote */}
-                    <div className="max-w-md">
-                        <blockquote className="text-xl leading-relaxed text-white/90">
-                            &ldquo;SmartSplit made our group trip so much easier. No more
-                            awkward conversations about money or spreadsheets. Everyone knows
-                            exactly what they owe.&rdquo;
-                        </blockquote>
-                        <div className="mt-6 flex items-center gap-4">
-                            <div className="h-12 w-12 rounded-full bg-white/20" />
-                            <div>
-                                <div className="font-semibold text-white">Sarah Chen</div>
-                                <div className="text-sm text-white/70">Travel Enthusiast</div>
-                            </div>
-                        </div>
-                    </div>
+                    {/* Testimonial/Quote - Rotating */}
+                    <AuthTestimonial />
 
                     {/* Footer */}
                     <div className="text-sm text-white/50">

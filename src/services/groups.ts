@@ -783,6 +783,18 @@ export const groupsService = {
     ): Promise<{ success: boolean; error?: string; pending?: boolean; message?: string }> {
         const supabase = createClient();
         
+        // VALIDATION: Amount must be positive and reasonable
+        if (!amount || amount <= 0) {
+            return { success: false, error: "Settlement amount must be positive" };
+        }
+        
+        if (amount > 10000000) { // $10M cap for sanity
+            return { success: false, error: "Settlement amount exceeds maximum limit" };
+        }
+        
+        // Round to 2 decimal places to avoid floating point issues
+        amount = Math.round(amount * 100) / 100;
+        
         // SECURITY: Verify user is a member of this group (IDOR prevention)
         const accessCheck = await verifyGroupAccess(groupId, recordedBy, "member", "record_settlement");
         if (!accessCheck.success) {

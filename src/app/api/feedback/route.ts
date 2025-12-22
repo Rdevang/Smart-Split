@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
             title,
             description,
             priority,
+            rating,
             email,
             name,
             user_id,
@@ -144,12 +145,22 @@ export async function POST(request: NextRequest) {
         }
 
         // Validate type
-        const validTypes = ["suggestion", "feature_request", "bug_report", "other"];
+        const validTypes = ["suggestion", "feature_request", "bug_report", "review", "other"];
         if (!validTypes.includes(type)) {
             return NextResponse.json(
                 { error: "Invalid feedback type" },
                 { status: 400 }
             );
+        }
+
+        // Validate rating for reviews
+        if (type === "review") {
+            if (!rating || typeof rating !== "number" || rating < 1 || rating > 5) {
+                return NextResponse.json(
+                    { error: "Rating must be between 1 and 5" },
+                    { status: 400 }
+                );
+            }
         }
 
         // Validate priority if provided
@@ -207,11 +218,33 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        logger.info("Feedback submitted", { type });
+        // If this is a review, also create an entry in the reviews table (pending approval)
+        if (type === "review") {
+            const { error: reviewError } = await supabase
+                .from("reviews")
+                .insert({
+                    user_id: user_id || null,
+                    author_name: sanitizedName || "Anonymous",
+                    author_title: null, // Can be added later by admin
+                    content: sanitizedDescription,
+                    rating: rating,
+                    is_approved: false, // Requires admin approval
+                    is_featured: false,
+                });
+
+            if (reviewError) {
+                logger.error("Review creation error", new Error(reviewError.message));
+                // Don't fail the whole request - feedback was saved
+            }
+        }
+
+        logger.info("Feedback submitted", { type, rating: type === "review" ? rating : undefined });
 
         return NextResponse.json({
             success: true,
-            message: "Feedback submitted successfully",
+            message: type === "review" 
+                ? "Thank you for your review! It will be visible after approval."
+                : "Feedback submitted successfully",
         });
     } catch (err) {
         logger.error("Feedback API error", err instanceof Error ? err : new Error(String(err)));

@@ -41,7 +41,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
         // Get pending settlements for this group to filter from SimplifiedDebts
         // Note: Only pending settlements are filtered - completed settlements are already in balance calculation
         supabase
-            .from("pending_settlements")
+            .from("settlements")
             .select("from_user, to_user, amount")
             .eq("group_id", id)
             .eq("status", "pending"),

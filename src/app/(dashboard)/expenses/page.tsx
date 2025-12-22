@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { expensesCachedServerService } from "@/services/expenses.cached.server";
 import { groupsCachedServerService } from "@/services/groups.cached.server";
+import { formatCurrency } from "@/lib/currency";
 
 export default async function ExpensesPage() {
     const supabase = await createClient();
@@ -15,6 +16,15 @@ export default async function ExpensesPage() {
     if (error || !user) {
         redirect("/login");
     }
+
+    // Fetch profile for currency preference
+    const { data: profile } = await supabase
+        .from("profiles")
+        .select("currency")
+        .eq("id", user.id)
+        .single();
+
+    const currency = profile?.currency || "USD";
 
     // Using CACHED services for fast page loads
     const [groupsResult, expensesResult] = await Promise.all([
@@ -60,7 +70,7 @@ export default async function ExpensesPage() {
                     <CardContent className="p-6">
                         <p className="text-sm font-medium text-green-700 dark:text-green-300">You are owed</p>
                         <p className="mt-2 text-3xl font-bold text-green-600 dark:text-green-400">
-                            ${totalOwed.toFixed(2)}
+                            {formatCurrency(totalOwed, currency)}
                         </p>
                     </CardContent>
                 </Card>
@@ -69,7 +79,7 @@ export default async function ExpensesPage() {
                     <CardContent className="p-6">
                         <p className="text-sm font-medium text-red-700 dark:text-red-300">You owe</p>
                         <p className="mt-2 text-3xl font-bold text-red-600 dark:text-red-400">
-                            ${totalOwe.toFixed(2)}
+                            {formatCurrency(totalOwe, currency)}
                         </p>
                     </CardContent>
                 </Card>
@@ -135,6 +145,7 @@ export default async function ExpensesPage() {
                                 key={expense.id}
                                 expense={expense}
                                 currentUserId={user.id}
+                                currency={currency}
                             />
                         ))}
                     </div>

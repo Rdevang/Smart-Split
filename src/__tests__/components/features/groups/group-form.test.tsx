@@ -4,10 +4,15 @@ import { GroupForm } from "@/components/features/groups/group-form";
 import { ToastProvider } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
 
-const mockPush = jest.fn();
 const mockBack = jest.fn();
-jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush, back: mockBack, refresh: jest.fn() }) }));
+const mockRefresh = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), back: mockBack, refresh: mockRefresh }) }));
 jest.mock("@/services/groups", () => ({ groupsService: { createGroup: jest.fn(), updateGroup: jest.fn() } }));
+
+// Mock the server action
+jest.mock("@/app/(dashboard)/actions", () => ({
+    getEncryptedGroupUrl: jest.fn((id: string) => Promise.resolve(`/groups/${id}`)),
+}));
 
 const mockCreateGroup = groupsService.createGroup as jest.MockedFunction<typeof groupsService.createGroup>;
 const mockUpdateGroup = groupsService.updateGroup as jest.MockedFunction<typeof groupsService.updateGroup>;
@@ -33,7 +38,9 @@ const TestWrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 describe("GroupForm", () => {
-    beforeEach(() => jest.clearAllMocks());
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
 
     describe("Create mode", () => {
         it("renders create mode", () => {
@@ -56,7 +63,13 @@ describe("GroupForm", () => {
             await user.type(screen.getByLabelText(/group name/i), "Test Group");
             await user.click(screen.getByRole("button", { name: /create group/i }));
 
-            await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/groups/new-id"));
+            // Verify createGroup was called with correct params
+            await waitFor(() => {
+                expect(mockCreateGroup).toHaveBeenCalledWith(
+                    "user-1",
+                    expect.objectContaining({ name: "Test Group" })
+                );
+            });
         });
 
         it("shows error on failure", async () => {
@@ -158,11 +171,13 @@ describe("GroupForm", () => {
             await user.click(screen.getByRole("button", { name: /save changes/i }));
 
             await waitFor(() => {
+                // updateGroup now takes (groupId, data, userId)
                 expect(mockUpdateGroup).toHaveBeenCalledWith(
                     "group-1",
                     expect.objectContaining({
                         currency: "EUR",
-                    })
+                    }),
+                    "user-1"
                 );
             });
         });

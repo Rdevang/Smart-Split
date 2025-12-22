@@ -250,6 +250,7 @@ export default async function DashboardPage() {
                                     key={expense.id}
                                     expense={expense}
                                     currentUserId={user.id}
+                                    currency={currency}
                                 />
                             ))}
                         </div>

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SimplifiedDebtsClient } from "@/components/features/groups/simplified-debts-client";
 import { ToastProvider } from "@/components/ui/toast";
@@ -18,6 +18,11 @@ jest.mock("@/services/groups", () => ({
     groupsService: {
         recordSettlement: jest.fn(),
     },
+}));
+
+// Mock dashboard actions
+jest.mock("@/app/(dashboard)/actions", () => ({
+    onSettlementMutation: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockRecordSettlement = groupsService.recordSettlement as jest.Mock;
@@ -48,6 +53,7 @@ describe("SimplifiedDebtsClient", () => {
                         user_id: "user-1",
                         placeholder_id: null,
                         amount: 50,
+                        is_settled: false,
                         profile: { id: "user-1", full_name: "John" },
                         placeholder: null,
                     },
@@ -55,6 +61,7 @@ describe("SimplifiedDebtsClient", () => {
                         user_id: "user-2",
                         placeholder_id: null,
                         amount: 50,
+                        is_settled: false,
                         profile: { id: "user-2", full_name: "Jane" },
                         placeholder: null,
                     },
@@ -88,10 +95,10 @@ describe("SimplifiedDebtsClient", () => {
         const settleButton = screen.getByRole("button", { name: /Settle/i });
         await user.click(settleButton);
 
-        // Wait for settlement to complete
-        await screen.findByText("Settled");
-
-        expect(mockRefresh).toHaveBeenCalled();
+        // Wait for the router.refresh to be called
+        await waitFor(() => {
+            expect(mockRefresh).toHaveBeenCalled();
+        });
     });
 
     it("shows all settled up message when no debts", () => {

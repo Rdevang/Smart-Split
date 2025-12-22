@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { MessageSquarePlus, Bug, Lightbulb, Sparkles, HelpCircle, Send, CheckCircle, History } from "lucide-react";
+import { MessageSquarePlus, Bug, Lightbulb, Sparkles, HelpCircle, Send, CheckCircle, History, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,10 +15,11 @@ import { Link } from "@/components/ui/link";
 import { cn } from "@/lib/utils";
 
 const feedbackSchema = z.object({
-    type: z.enum(["suggestion", "feature_request", "bug_report", "other"]),
+    type: z.enum(["suggestion", "feature_request", "bug_report", "review", "other"]),
     title: z.string().min(5, "Title must be at least 5 characters").max(200, "Title too long"),
     description: z.string().min(20, "Please provide more details (at least 20 characters)").max(5000, "Description too long"),
     priority: z.enum(["low", "medium", "high", "critical"]).optional(),
+    rating: z.number().min(1).max(5).optional(),
     email: z.string().email("Invalid email").optional().or(z.literal("")),
     name: z.string().max(100, "Name too long").optional(),
 });
@@ -37,6 +38,7 @@ const feedbackTypes = [
     { value: "suggestion", label: "💡 Suggestion", icon: Lightbulb, color: "text-yellow-500" },
     { value: "feature_request", label: "✨ Feature Request", icon: Sparkles, color: "text-purple-500" },
     { value: "bug_report", label: "🐛 Bug Report", icon: Bug, color: "text-red-500" },
+    { value: "review", label: "⭐ Review", icon: Star, color: "text-amber-500" },
     { value: "other", label: "❓ Other", icon: HelpCircle, color: "text-gray-500" },
 ];
 
@@ -52,6 +54,8 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [selectedType, setSelectedType] = useState<string>("suggestion");
+    const [rating, setRating] = useState(5);
+    const [hoverRating, setHoverRating] = useState(0);
 
     const {
         register,
@@ -67,6 +71,7 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
             title: "",
             description: "",
             priority: "medium",
+            rating: 5,
             email: user?.email || "",
             name: user?.full_name || "",
         },
@@ -87,6 +92,7 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...data,
+                    rating: data.type === "review" ? rating : undefined,
                     user_id: user?.id || null,
                     user_agent: navigator.userAgent,
                     page_url: window.location.href,
@@ -234,6 +240,46 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
                             value={watch("priority") || "medium"}
                             onChange={(value) => setValue("priority", value as FeedbackFormData["priority"])}
                         />
+                    )}
+
+                    {/* Star Rating (only for reviews) */}
+                    {selectedType === "review" && (
+                        <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Your Rating *
+                            </label>
+                            <div className="flex items-center gap-1">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                    <button
+                                        key={star}
+                                        type="button"
+                                        onClick={() => setRating(star)}
+                                        onMouseEnter={() => setHoverRating(star)}
+                                        onMouseLeave={() => setHoverRating(0)}
+                                        className="p-1 transition-transform hover:scale-110"
+                                    >
+                                        <Star
+                                            className={cn(
+                                                "h-8 w-8 transition-colors",
+                                                (hoverRating || rating) >= star
+                                                    ? "fill-amber-400 text-amber-400"
+                                                    : "fill-gray-200 text-gray-200 dark:fill-gray-700 dark:text-gray-700"
+                                            )}
+                                        />
+                                    </button>
+                                ))}
+                                <span className="ml-3 text-sm text-gray-500 dark:text-gray-400">
+                                    {rating === 5 && "Excellent!"}
+                                    {rating === 4 && "Great!"}
+                                    {rating === 3 && "Good"}
+                                    {rating === 2 && "Fair"}
+                                    {rating === 1 && "Poor"}
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Reviews with 4+ stars may be featured on our website
+                            </p>
+                        </div>
                     )}
 
                     {/* Contact Info */}

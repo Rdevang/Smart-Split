@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Shield, Users, MessageSquare, LayoutDashboard, ArrowLeft } from "lucide-react";
+import { Shield, Users, MessageSquare, LayoutDashboard, ArrowLeft, Gauge } from "lucide-react";
 import { Link } from "@/components/ui/link";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,7 @@ const adminNavItems = [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
+    { href: "/admin/rate-limits", label: "Rate Limits", icon: Gauge },
 ];
 
 export default async function AdminLayout({

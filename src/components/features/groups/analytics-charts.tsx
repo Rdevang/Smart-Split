@@ -265,14 +265,23 @@ export function TrendChart({ expenses, currency }: TrendChartProps) {
             })
             .sort((a, b) => a.date.localeCompare(b.date));
 
-        // Calculate trend (compare last half vs first half)
+        // Calculate trend (compare average of last half vs first half)
+        // Using averages instead of sums to handle odd number of data points fairly
         let trendValue = 0;
         if (sortedData.length >= 2) {
             const midpoint = Math.floor(sortedData.length / 2);
-            const firstHalf = sortedData.slice(0, midpoint).reduce((sum, d) => sum + d.amount, 0);
-            const secondHalf = sortedData.slice(midpoint).reduce((sum, d) => sum + d.amount, 0);
-            if (firstHalf > 0) {
-                trendValue = ((secondHalf - firstHalf) / firstHalf) * 100;
+            const firstHalfData = sortedData.slice(0, midpoint);
+            const secondHalfData = sortedData.slice(midpoint);
+            
+            const firstHalfAvg = firstHalfData.length > 0 
+                ? firstHalfData.reduce((sum, d) => sum + d.amount, 0) / firstHalfData.length 
+                : 0;
+            const secondHalfAvg = secondHalfData.length > 0 
+                ? secondHalfData.reduce((sum, d) => sum + d.amount, 0) / secondHalfData.length 
+                : 0;
+            
+            if (firstHalfAvg > 0) {
+                trendValue = ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100;
             }
         }
 

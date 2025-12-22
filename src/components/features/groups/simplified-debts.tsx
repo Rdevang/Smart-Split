@@ -16,6 +16,7 @@ interface ExpenseSplit {
     user_id: string | null;
     placeholder_id?: string | null;
     amount: number;
+    is_settled?: boolean | null;
     profile?: { id: string; full_name: string | null } | null;
     placeholder?: { id: string; name: string } | null;
 }
@@ -49,6 +50,7 @@ interface SimplifiedDebtsProps {
  * Calculate raw per-expense debts with netting between pairs.
  * Each person who owes on an expense pays the person who paid for that expense.
  * Bidirectional debts between the same two people are netted out.
+ * NOTE: Only includes UNSETTLED splits to avoid showing already-paid debts.
  */
 function getRawDebtsFromExpenses(expenses: Expense[]): SimplifiedPayment[] {
     // Track gross debts: key is "fromId-toId", value is the debt info
@@ -66,6 +68,9 @@ function getRawDebtsFromExpenses(expenses: Expense[]): SimplifiedPayment[] {
 
         // Each split participant owes the payer (except the payer themselves)
         for (const split of expense.splits) {
+            // Skip settled splits - they're already paid
+            if (split.is_settled) continue;
+            
             const participantId = split.user_id || split.placeholder_id;
             if (!participantId || participantId === payerId) continue;
 
@@ -201,6 +206,8 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
     // Fetch UPI IDs for all payees (people receiving money)
     // Uses server API to decrypt encrypted UPI IDs
     useEffect(() => {
+        let mounted = true;
+        
         const fetchUpiIds = async () => {
             const payeeIds = payments
                 .filter(p => p.from_user_id === currentUserId && !p.to_is_placeholder)
@@ -210,6 +217,9 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
 
             const upiIdMap: Record<string, string | null> = {};
             for (const payeeId of uniquePayeeIds) {
+                // Check if component is still mounted before each fetch
+                if (!mounted) return;
+                
                 try {
                     // Fetch decrypted UPI ID from server API
                     const response = await fetch(`/api/upi/${payeeId}`);
@@ -224,12 +234,19 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                 }
             }
 
-            setPayeeUpiIds(upiIdMap);
+            // Only update state if component is still mounted
+            if (mounted) {
+                setPayeeUpiIds(upiIdMap);
+            }
         };
 
         if (payments.length > 0) {
             fetchUpiIds();
         }
+        
+        return () => {
+            mounted = false;
+        };
     }, [payments, currentUserId]);
 
     // Handle UPI payment

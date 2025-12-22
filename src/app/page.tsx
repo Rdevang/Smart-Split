@@ -10,6 +10,7 @@ import {
   PieChart,
 } from "lucide-react";
 import { Button } from "@/components/ui";
+import { Testimonials } from "@/components/features/reviews/testimonials";
 
 // JSON-LD Structured Data for SEO
 const jsonLd = {
@@ -292,6 +293,9 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Testimonials Section */}
+        <Testimonials />
+
         {/* CTA Section */}
         <section className="py-20 sm:py-32">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -340,19 +344,19 @@ export default function LandingPage() {
 
               <nav className="flex gap-8">
                 <Link
-                  href="#"
+                  href="/privacy"
                   className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                 >
                   Privacy
                 </Link>
                 <Link
-                  href="#"
+                  href="/terms"
                   className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                 >
                   Terms
                 </Link>
                 <Link
-                  href="#"
+                  href="/contact"
                   className="text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
                 >
                   Contact

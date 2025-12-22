@@ -73,6 +73,13 @@ export async function proxy(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
     const requestId = generateRequestId();
     const startTime = Date.now();
+    const host = request.headers.get("host") || "";
+
+    // Skip ALL rate limiting on localhost (development)
+    const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
+    if (isLocalhost) {
+        return NextResponse.next();
+    }
 
     // Skip rate limiting and security analysis for static assets and SEO files
     if (

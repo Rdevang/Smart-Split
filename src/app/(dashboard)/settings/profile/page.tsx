@@ -1,6 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/encryption";
 import { ProfileForm } from "./profile-form";
+import { EmailPreferencesForm } from "@/components/features/settings/email-preferences";
+
+interface EmailPreferences {
+    payment_reminders: boolean;
+    settlement_requests: boolean;
+    settlement_updates: boolean;
+    group_invitations: boolean;
+    expense_added: boolean;
+    weekly_digest: boolean;
+}
 
 export default async function ProfileSettingsPage() {
     const supabase = await createClient();
@@ -14,7 +24,7 @@ export default async function ProfileSettingsPage() {
     // Fetch profile from database (only fields we need)
     const { data: profile } = await supabase
         .from("profiles")
-        .select("full_name, avatar_url, phone, currency, upi_id")
+        .select("full_name, avatar_url, phone, currency, upi_id, email_preferences")
         .eq("id", authUser.id)
         .single();
 
@@ -32,9 +42,23 @@ export default async function ProfileSettingsPage() {
         upi_id: decryptedUpiId,
     };
 
+    // Default email preferences if not set
+    const defaultEmailPreferences: EmailPreferences = {
+        payment_reminders: true,
+        settlement_requests: true,
+        settlement_updates: true,
+        group_invitations: true,
+        expense_added: false,
+        weekly_digest: true,
+    };
+
+    const emailPreferences: EmailPreferences = profile?.email_preferences
+        ? (profile.email_preferences as EmailPreferences)
+        : defaultEmailPreferences;
+
     return (
-        <div>
-            <div className="mb-8">
+        <div className="space-y-8">
+            <div>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                     Profile Settings
                 </h1>
@@ -44,6 +68,11 @@ export default async function ProfileSettingsPage() {
             </div>
 
             <ProfileForm user={user} />
+
+            <EmailPreferencesForm
+                userId={authUser.id}
+                initialPreferences={emailPreferences}
+            />
         </div>
     );
 }

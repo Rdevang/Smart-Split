@@ -177,6 +177,7 @@ export async function getEncryptedGroupUrl(groupId: string): Promise<string> {
 
 /**
  * Server action to send a payment reminder notification
+ * Sends both in-app notification AND email (if configured)
  */
 export async function sendPaymentReminder(
     groupId: string,
@@ -187,25 +188,20 @@ export async function sendPaymentReminder(
 ): Promise<{ success: boolean; error?: string }> {
     const supabase = await createClient();
 
-    // Get the creditor's name
-    const { data: creditor } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", creditorUserId)
-        .single();
-
-    // Get the group name
-    const { data: group } = await supabase
-        .from("groups")
-        .select("name")
-        .eq("id", groupId)
-        .single();
+    // Get the creditor's name and debtor's info
+    const [{ data: creditor }, { data: debtor }, { data: group }] = await Promise.all([
+        supabase.from("profiles").select("full_name").eq("id", creditorUserId).single(),
+        supabase.from("profiles").select("full_name, email").eq("id", debtorUserId).single(),
+        supabase.from("groups").select("name").eq("id", groupId).single(),
+    ]);
 
     const creditorName = creditor?.full_name || "Someone";
+    const debtorName = debtor?.full_name || "there";
+    const debtorEmail = debtor?.email;
     const groupName = group?.name || "a group";
     const formattedAmount = formatCurrency(amount, currencyCode);
 
-    // Create the notification
+    // Create the in-app notification
     const { error } = await supabase
         .from("notifications")
         .insert({
@@ -225,6 +221,26 @@ export async function sendPaymentReminder(
     if (error) {
         console.error("Failed to send reminder:", error);
         return { success: false, error: "Failed to send reminder" };
+    }
+
+    // Send email notification (non-blocking, don't fail if email fails)
+    if (debtorEmail) {
+        try {
+            const { sendPaymentReminderEmail } = await import("@/lib/email");
+            const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://smartsplit.app";
+            
+            await sendPaymentReminderEmail({
+                to: debtorEmail,
+                debtorName: debtorName,
+                creditorName: creditorName,
+                amount: formattedAmount,
+                groupName: groupName,
+                paymentLink: `${siteUrl}/groups/${encryptUrlId(groupId)}`,
+            });
+        } catch (emailError) {
+            // Log but don't fail - email is supplementary
+            console.warn("Email notification failed:", emailError);
+        }
     }
 
     // Log activity
