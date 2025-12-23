@@ -178,6 +178,9 @@ export async function getEncryptedGroupUrl(groupId: string): Promise<string> {
 /**
  * Server action to send a payment reminder notification
  * Sends both in-app notification AND email (if configured)
+ * 
+ * NOTE: Email sending is completely non-blocking and fire-and-forget.
+ * Even if email limits are reached or email fails, this action succeeds.
  */
 export async function sendPaymentReminder(
     groupId: string,
@@ -201,7 +204,7 @@ export async function sendPaymentReminder(
     const groupName = group?.name || "a group";
     const formattedAmount = formatCurrency(amount, currencyCode);
 
-    // Create the in-app notification
+    // Create the in-app notification (this is the primary notification)
     const { error } = await supabase
         .from("notifications")
         .insert({
@@ -223,39 +226,43 @@ export async function sendPaymentReminder(
         return { success: false, error: "Failed to send reminder" };
     }
 
-    // Send email notification (non-blocking, don't fail if email fails)
+    // Email notification is completely non-blocking (fire-and-forget)
+    // This runs in background and doesn't affect the main action
     if (debtorEmail) {
-        try {
-            const { sendPaymentReminderEmail } = await import("@/lib/email");
+        // Import and call async - don't await, let it run in background
+        import("@/lib/notifications").then(({ notifyPaymentReminder }) => {
             const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://smartsplit.app";
-            
-            await sendPaymentReminderEmail({
-                to: debtorEmail,
+            notifyPaymentReminder({
+                userId: debtorUserId,
+                email: debtorEmail,
                 debtorName: debtorName,
                 creditorName: creditorName,
                 amount: formattedAmount,
                 groupName: groupName,
                 paymentLink: `${siteUrl}/groups/${encryptUrlId(groupId)}`,
             });
-        } catch (emailError) {
-            // Log but don't fail - email is supplementary
-            console.warn("Email notification failed:", emailError);
-        }
+        }).catch(() => {
+            // Silently ignore import errors - email is supplementary
+        });
     }
 
-    // Log activity
-    await supabase.from("activities").insert({
-        group_id: groupId,
-        user_id: creditorUserId,
-        entity_type: "settlement",
-        entity_id: null,
-        action: "reminded",
-        metadata: {
-            debtor_id: debtorUserId,
-            amount: amount,
-            currency: currencyCode,
-        },
-    });
+    // Log activity (non-blocking - wrap in try-catch to handle async)
+    (async () => {
+        try {
+            await supabase.from("activities").insert({
+                group_id: groupId,
+                user_id: creditorUserId,
+                entity_type: "settlement",
+                entity_id: null,
+                action: "reminded",
+                metadata: {
+                    debtor_id: debtorUserId,
+                    amount: amount,
+                    currency: currencyCode,
+                },
+            });
+        } catch { /* ignore activity logging errors */ }
+    })();
 
     return { success: true };
 }

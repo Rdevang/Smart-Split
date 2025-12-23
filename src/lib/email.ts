@@ -57,16 +57,26 @@ interface SendEmailParams {
 
 /**
  * Send an email using Resend
+ * 
+ * This function is designed to be error-tolerant:
+ * - Never throws exceptions
+ * - Returns gracefully on any failure including rate limits
+ * - Logs errors but doesn't propagate them
  */
-export async function sendEmail(params: SendEmailParams): Promise<{ success: boolean; error?: string; id?: string }> {
-    const resend = await getResendClient();
-
-    if (!resend) {
-        console.log("[Email] Skipping email send - Resend not configured");
-        return { success: false, error: "Email service not configured" };
-    }
-
+export async function sendEmail(params: SendEmailParams): Promise<{ 
+    success: boolean; 
+    error?: string; 
+    id?: string;
+    rateLimited?: boolean;
+}> {
     try {
+        const resend = await getResendClient();
+
+        if (!resend) {
+            console.log("[Email] Skipping email send - Resend not configured");
+            return { success: false, error: "Email service not configured" };
+        }
+
         const { data, error } = await resend.emails.send({
             from: EMAIL_CONFIG.from,
             to: Array.isArray(params.to) ? params.to : [params.to],
@@ -77,14 +87,32 @@ export async function sendEmail(params: SendEmailParams): Promise<{ success: boo
         });
 
         if (error) {
-            console.error("[Email] Send failed:", error);
+            // Check for rate limit errors from Resend
+            const errorMessage = error.message?.toLowerCase() || "";
+            if (errorMessage.includes("rate") || errorMessage.includes("limit") || 
+                errorMessage.includes("too many") || errorMessage.includes("quota")) {
+                console.warn("[Email] Rate limit reached:", error.message);
+                return { success: false, error: error.message, rateLimited: true };
+            }
+            
+            console.error("[Email] Send failed:", error.message);
             return { success: false, error: error.message };
         }
 
         console.log("[Email] Sent successfully:", data?.id);
         return { success: true, id: data?.id };
     } catch (error) {
-        console.error("[Email] Unexpected error:", error);
+        // Handle any unexpected errors gracefully
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        
+        // Check for rate limit in caught errors
+        if (errorMessage.toLowerCase().includes("rate") || 
+            errorMessage.toLowerCase().includes("limit")) {
+            console.warn("[Email] Rate limit error caught:", errorMessage);
+            return { success: false, error: errorMessage, rateLimited: true };
+        }
+        
+        console.error("[Email] Unexpected error:", errorMessage);
         return { success: false, error: "Failed to send email" };
     }
 }

@@ -30,6 +30,11 @@ interface QueuedEmail {
 
 /**
  * Queue an email for sending (respects user preferences)
+ * 
+ * This function is designed to be non-blocking and error-tolerant:
+ * - Never throws exceptions
+ * - Returns gracefully on any failure
+ * - Logs errors but doesn't propagate them
  */
 export async function queueEmail(params: {
     userId?: string;
@@ -41,61 +46,98 @@ export async function queueEmail(params: {
     metadata?: Record<string, unknown>;
     scheduledFor?: Date;
     idempotencyKey?: string;
-}): Promise<{ queued: boolean; skipped?: boolean; error?: string }> {
-    const supabase = await createClient();
+}): Promise<{ queued: boolean; skipped?: boolean; error?: string; rateLimited?: boolean }> {
+    try {
+        const supabase = await createClient();
 
-    const { data, error } = await supabase.rpc("queue_email", {
-        p_user_id: params.userId || null,
-        p_email: params.email,
-        p_email_type: params.emailType,
-        p_subject: params.subject,
-        p_html_body: params.htmlBody,
-        p_text_body: params.textBody || null,
-        p_metadata: params.metadata || {},
-        p_scheduled_for: params.scheduledFor?.toISOString() || new Date().toISOString(),
-        p_idempotency_key: params.idempotencyKey || null,
-    });
+        const { data, error } = await supabase.rpc("queue_email", {
+            p_user_id: params.userId || null,
+            p_email: params.email,
+            p_email_type: params.emailType,
+            p_subject: params.subject,
+            p_html_body: params.htmlBody,
+            p_text_body: params.textBody || null,
+            p_metadata: params.metadata || {},
+            p_scheduled_for: params.scheduledFor?.toISOString() || new Date().toISOString(),
+            p_idempotency_key: params.idempotencyKey || null,
+        });
 
-    if (error) {
-        console.error("[EmailQueue] Failed to queue email:", error);
-        return { queued: false, error: error.message };
+        if (error) {
+            // Check for rate limit errors
+            if (error.message.includes("rate limit") || error.message.includes("Rate limit") ||
+                error.message.includes("too many") || error.message.includes("Too many")) {
+                console.warn("[EmailQueue] Rate limit reached, email skipped:", params.emailType);
+                return { queued: false, rateLimited: true, error: "Rate limit reached" };
+            }
+
+            console.error("[EmailQueue] Failed to queue email:", error.message);
+            return { queued: false, error: error.message };
+        }
+
+        // If data is null, user opted out of this email type
+        if (data === null) {
+            console.log("[EmailQueue] Email skipped - user opted out:", params.emailType);
+            return { queued: false, skipped: true };
+        }
+
+        return { queued: true };
+    } catch (err) {
+        // Catch any unexpected errors and return gracefully
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+        console.error("[EmailQueue] Unexpected error queuing email:", errorMessage);
+        return { queued: false, error: errorMessage };
     }
-
-    // If data is null, user opted out of this email type
-    if (data === null) {
-        return { queued: false, skipped: true };
-    }
-
-    return { queued: true };
 }
 
 /**
  * Process the email queue (called by cron job)
  * Returns number of emails processed
+ * 
+ * This function handles rate limits gracefully:
+ * - If rate limited, stops processing and retries remaining emails later
+ * - Never throws exceptions
+ * - Logs all errors for debugging
  */
 export async function processEmailQueue(): Promise<{
     processed: number;
     sent: number;
     failed: number;
+    rateLimited: number;
     errors: string[];
 }> {
-    const supabase = await createClient();
+    let supabase;
+    try {
+        supabase = await createClient();
+    } catch (err) {
+        console.error("[EmailQueue] Failed to create Supabase client:", err);
+        return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: ["Database connection failed"] };
+    }
+
     const errors: string[] = [];
     let sent = 0;
     let failed = 0;
+    let rateLimited = 0;
 
     // Get pending emails (with row locking to prevent duplicate processing)
-    const { data: emails, error } = await supabase.rpc("get_pending_emails", {
-        p_batch_size: BATCH_SIZE,
-    }) as { data: QueuedEmail[] | null; error: Error | null };
+    let emails: QueuedEmail[] = [];
+    try {
+        const { data, error } = await supabase.rpc("get_pending_emails", {
+            p_batch_size: BATCH_SIZE,
+        }) as { data: QueuedEmail[] | null; error: Error | null };
 
-    if (error) {
-        console.error("[EmailQueue] Failed to fetch pending emails:", error);
-        return { processed: 0, sent: 0, failed: 0, errors: [error.message] };
+        if (error) {
+            console.error("[EmailQueue] Failed to fetch pending emails:", error);
+            return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: [error.message] };
+        }
+
+        emails = data || [];
+    } catch (err) {
+        console.error("[EmailQueue] Error fetching emails:", err);
+        return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: ["Failed to fetch emails"] };
     }
 
-    if (!emails || emails.length === 0) {
-        return { processed: 0, sent: 0, failed: 0, errors: [] };
+    if (emails.length === 0) {
+        return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: [] };
     }
 
     console.log(`[EmailQueue] Processing ${emails.length} emails...`);
@@ -111,48 +153,80 @@ export async function processEmailQueue(): Promise<{
             });
 
             if (result.success) {
-                // Mark as sent
-                await supabase.rpc("mark_email_processed", {
-                    p_queue_id: email.id,
-                    p_status: "sent",
-                    p_provider_id: result.id || null,
-                    p_error_message: null,
-                });
+                // Mark as sent (ignore errors from marking)
+                try {
+                    await supabase.rpc("mark_email_processed", {
+                        p_queue_id: email.id,
+                        p_status: "sent",
+                        p_provider_id: result.id || null,
+                        p_error_message: null,
+                    });
+                } catch { /* ignore */ }
                 sent++;
+            } else if (result.rateLimited) {
+                // Rate limited - stop processing and leave remaining emails for next batch
+                console.warn("[EmailQueue] Rate limit hit, stopping batch processing");
+                rateLimited++;
+
+                // Mark this email to retry later (don't count as failure)
+                try {
+                    await supabase.rpc("mark_email_processed", {
+                        p_queue_id: email.id,
+                        p_status: "pending", // Keep as pending for retry
+                        p_provider_id: null,
+                        p_error_message: "Rate limited - will retry",
+                    });
+                } catch { /* ignore */ }
+
+                // Stop processing - don't hammer the API
+                break;
             } else {
                 // Mark as failed (will retry if attempts < max_attempts)
                 const shouldRetry = email.attempts < 3;
-                await supabase.rpc("mark_email_processed", {
-                    p_queue_id: email.id,
-                    p_status: shouldRetry ? "pending" : "failed",
-                    p_provider_id: null,
-                    p_error_message: result.error || "Unknown error",
-                });
+                try {
+                    await supabase.rpc("mark_email_processed", {
+                        p_queue_id: email.id,
+                        p_status: shouldRetry ? "pending" : "failed",
+                        p_provider_id: null,
+                        p_error_message: result.error || "Unknown error",
+                    });
+                } catch { /* ignore */ }
                 failed++;
                 errors.push(`${email.to_email}: ${result.error}`);
             }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : "Unknown error";
-            await supabase.rpc("mark_email_processed", {
-                p_queue_id: email.id,
-                p_status: email.attempts < 3 ? "pending" : "failed",
-                p_provider_id: null,
-                p_error_message: errorMsg,
-            });
+
+            // Check if this is a rate limit error
+            if (errorMsg.toLowerCase().includes("rate") || errorMsg.toLowerCase().includes("limit")) {
+                console.warn("[EmailQueue] Rate limit error, stopping batch");
+                rateLimited++;
+                break;
+            }
+
+            try {
+                await supabase.rpc("mark_email_processed", {
+                    p_queue_id: email.id,
+                    p_status: email.attempts < 3 ? "pending" : "failed",
+                    p_provider_id: null,
+                    p_error_message: errorMsg,
+                });
+            } catch { /* ignore */ }
             failed++;
             errors.push(`${email.to_email}: ${errorMsg}`);
         }
 
-        // Rate limiting delay
+        // Rate limiting delay between emails
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_EMAILS_MS));
     }
 
-    console.log(`[EmailQueue] Processed: ${emails.length}, Sent: ${sent}, Failed: ${failed}`);
+    console.log(`[EmailQueue] Processed: ${sent + failed + rateLimited}, Sent: ${sent}, Failed: ${failed}, Rate Limited: ${rateLimited}`);
 
     return {
-        processed: emails.length,
+        processed: sent + failed + rateLimited,
         sent,
         failed,
+        rateLimited,
         errors,
     };
 }
