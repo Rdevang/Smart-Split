@@ -5,6 +5,14 @@ import { Redis } from "@upstash/redis";
 let redis: Redis | null = null;
 
 // ============================================
+// PERFORMANCE: Timeout for Redis operations
+// ============================================
+// If Redis is slow (network issues, cold start), skip it and go direct to DB
+// This prevents Redis from becoming a bottleneck
+
+export const REDIS_TIMEOUT_MS = 150; // Skip cache if Redis takes > 150ms
+
+// ============================================
 // CIRCUIT BREAKER PATTERN
 // ============================================
 // If Redis fails repeatedly, stop trying for a while

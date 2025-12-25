@@ -1,5 +1,30 @@
-import { getRedis, recordFailure, recordSuccess } from "./redis";
+import { getRedis, recordFailure, recordSuccess, REDIS_TIMEOUT_MS } from "./redis";
 import { compressIfNeeded, decompressIfNeeded, COMPRESSION_THRESHOLD } from "./compression";
+
+// ============================================
+// PERFORMANCE: Timeout wrapper for Redis ops
+// ============================================
+// Prevents Redis from becoming a bottleneck when slow/unreachable
+
+async function withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    fallback: T
+): Promise<T> {
+    let timeoutId: NodeJS.Timeout;
+    const timeoutPromise = new Promise<T>((resolve) => {
+        timeoutId = setTimeout(() => resolve(fallback), timeoutMs);
+    });
+
+    try {
+        const result = await Promise.race([promise, timeoutPromise]);
+        clearTimeout(timeoutId!);
+        return result;
+    } catch {
+        clearTimeout(timeoutId!);
+        return fallback;
+    }
+}
 
 // ============================================
 // CACHE VERSIONING (Per-Data-Type)
@@ -262,11 +287,13 @@ function deserializeCacheEntry<T>(
 }
 
 /**
- * Generic cache wrapper with:
- * 1. Cache stampede protection (lock mechanism)
- * 2. Stale-while-revalidate (return stale data, refresh in background)
- * 3. TTL jitter (prevents synchronized expiration - thundering herd)
- * 4. Null caching (prevents cache penetration attacks)
+ * Generic cache wrapper - SIMPLIFIED for performance
+ * 
+ * Key optimizations:
+ * 1. Timeout on Redis (skip if slow) - prevents Redis from being a bottleneck
+ * 2. No locks - accept occasional cache stampede for lower latency
+ * 3. Stale-while-revalidate - return stale data, refresh in background
+ * 4. TTL jitter - prevents synchronized expiration
  * 
  * @param key - Cache key
  * @param fetcher - Function to fetch data if cache miss
@@ -289,8 +316,12 @@ export async function cached<T>(
     const vKey = autoVersionKey(key);
 
     try {
-        // Try to get from cache (with metadata)
-        const rawEntry = await redis.get<CacheEntry<T> | CompressedCacheEntry>(vKey);
+        // Try to get from cache WITH TIMEOUT - don't let slow Redis block us
+        const rawEntry = await withTimeout(
+            redis.get<CacheEntry<T> | CompressedCacheEntry>(vKey),
+            REDIS_TIMEOUT_MS,
+            null // Fallback: treat as cache miss
+        );
 
         // Redis responded successfully - reset circuit breaker
         recordSuccess();
@@ -319,8 +350,13 @@ export async function cached<T>(
             return cachedEntry.data as T;
         }
 
-        // Cache miss - fetch with stampede protection
-        return fetchWithLock(vKey, fetcher, ttl, redis);
+        // Cache miss - fetch directly (no lock, accept occasional stampede for speed)
+        const freshData = await fetcher();
+
+        // Store in cache in background (don't block response)
+        storeInCacheBackground(vKey, freshData, ttl, redis);
+
+        return freshData;
     } catch (error) {
         // Record failure for circuit breaker
         recordFailure();
@@ -370,71 +406,45 @@ export async function cachedSensitive<T>(
 }
 
 /**
- * Fetch data with lock to prevent cache stampede
- * Includes jitter and null caching for penetration protection
+ * Store data in cache in background (non-blocking)
+ * Simplified: No locks, just store with jitter
  */
-async function fetchWithLock<T>(
+function storeInCacheBackground<T>(
     key: string,
-    fetcher: () => Promise<T>,
+    data: T,
     ttl: number,
     redis: NonNullable<ReturnType<typeof getRedis>>
-): Promise<T> {
-    const lockKey = `lock:${key}`;
+): void {
+    // Fire and forget - don't block the response
+    (async () => {
+        try {
+            // Check if result is null/empty (cache penetration protection)
+            const isNullResult = data === null ||
+                data === undefined ||
+                (Array.isArray(data) && data.length === 0);
 
-    // Try to acquire lock
-    const lockAcquired = await redis.set(lockKey, "1", {
-        ex: 10, // Lock expires in 10 seconds (safety net)
-        nx: true // Only set if doesn't exist
-    });
-
-    if (!lockAcquired) {
-        // Another process is fetching - wait briefly and retry cache
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        const rawRetryData = await redis.get<CacheEntry<T> | CompressedCacheEntry>(key);
-        if (rawRetryData !== null && rawRetryData.data !== undefined) {
-            const retryData = deserializeCacheEntry<T>(rawRetryData);
-            // Check for cached null
-            if (retryData.isNull) {
-                return null as T;
+            if (isNullResult) {
+                // Cache the "not found" with shorter TTL
+                const nullEntry: CacheEntry<T> = {
+                    data: NULL_SENTINEL as T,
+                    timestamp: Date.now(),
+                    isNull: true,
+                };
+                await redis.set(key, nullEntry, { ex: CacheTTL.NULL_RESULT });
+            } else {
+                // Store real data with jittered TTL (compress if large)
+                const entry: CacheEntry<T> = {
+                    data: data,
+                    timestamp: Date.now(),
+                };
+                const serializedEntry = serializeCacheEntry(entry);
+                const jitteredTTL = addJitter(ttl);
+                await redis.set(key, serializedEntry, { ex: jitteredTTL });
             }
-            return retryData.data as T;
+        } catch (error) {
+            console.error(`Background cache store failed for ${key}:`, error);
         }
-        // Still no data - proceed to fetch anyway (lock holder may have failed)
-    }
-
-    try {
-        // Fetch fresh data
-        const freshData = await fetcher();
-
-        // Check if result is null/empty (cache penetration protection)
-        const isNullResult = freshData === null ||
-            freshData === undefined ||
-            (Array.isArray(freshData) && freshData.length === 0);
-
-        if (isNullResult) {
-            // Cache the "not found" with shorter TTL to prevent repeated DB hits
-            const nullEntry: CacheEntry<T> = {
-                data: NULL_SENTINEL as T,
-                timestamp: Date.now(),
-                isNull: true,
-            };
-            await redis.set(key, nullEntry, { ex: CacheTTL.NULL_RESULT });
-        } else {
-            // Store real data with jittered TTL (compress if large)
-            const entry: CacheEntry<T> = {
-                data: freshData,
-                timestamp: Date.now(),
-            };
-            const serializedEntry = serializeCacheEntry(entry);
-            const jitteredTTL = addJitter(ttl);
-            await redis.set(key, serializedEntry, { ex: jitteredTTL });
-        }
-
-        return freshData;
-    } finally {
-        // Release lock (fire and forget)
-        redis.del(lockKey).catch(() => { });
-    }
+    })();
 }
 
 /**
