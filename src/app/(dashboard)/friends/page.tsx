@@ -1,14 +1,20 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { friendsServerService } from "@/services/friends.server";
 import { FriendsList } from "@/components/features/friends/friends-list";
 
 export default async function FriendsPage() {
     const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
+    
+    // Use getSession() - reads from cookie (~0ms)
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (error || !user) {
+    if (!session?.user) {
         redirect("/login");
     }
+
+    // Pre-fetch data server-side - no client waterfall
+    const members = await friendsServerService.getPastGroupMembers(session.user.id);
 
     return (
         <div className="space-y-6">
@@ -21,7 +27,7 @@ export default async function FriendsPage() {
                 </p>
             </div>
 
-            <FriendsList userId={user.id} />
+            <FriendsList initialMembers={members} />
         </div>
     );
 }

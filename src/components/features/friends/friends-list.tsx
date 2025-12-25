@@ -1,56 +1,44 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
-import { Users, Loader2, Search } from "lucide-react";
+import { Users, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { friendsService, type PastMember } from "@/services/friends";
 
-interface FriendsListProps {
-    userId: string;
+export interface PastMember {
+    id: string;
+    name: string;
+    email: string;
+    avatar_url: string | null;
+    is_placeholder: boolean;
+    groups_shared: number;
 }
 
-export function FriendsList({ userId }: FriendsListProps) {
-    const [members, setMembers] = useState<PastMember[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState("");
+interface FriendsListProps {
+    initialMembers: PastMember[];
+}
 
-    useEffect(() => {
-        const loadData = async () => {
-            setIsLoading(true);
-            const data = await friendsService.getPastGroupMembers(userId);
-            setMembers(data);
-            setIsLoading(false);
-        };
-        loadData();
-    }, [userId]);
+export function FriendsList({ initialMembers }: FriendsListProps) {
+    const [searchQuery, setSearchQuery] = useState("");
 
     const filteredMembers = useMemo(() => {
         if (searchQuery.trim()) {
             const lowerQuery = searchQuery.toLowerCase();
-            return members.filter(
+            return initialMembers.filter(
                 (m) =>
                     m.name.toLowerCase().includes(lowerQuery) ||
                     m.email.toLowerCase().includes(lowerQuery)
             );
         }
-        return members;
-    }, [searchQuery, members]);
-
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-teal-500" />
-            </div>
-        );
-    }
+        return initialMembers;
+    }, [searchQuery, initialMembers]);
 
     return (
         <div className="space-y-6">
             {/* Search */}
-            {members.length > 0 && (
+            {initialMembers.length > 0 && (
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <Input
@@ -64,13 +52,13 @@ export function FriendsList({ userId }: FriendsListProps) {
             )}
 
             {/* Stats */}
-            {members.length > 0 && (
+            {initialMembers.length > 0 && (
                 <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                    <span>{members.length} people from your trips</span>
+                    <span>{initialMembers.length} people from your trips</span>
                     <span>•</span>
-                    <span>{members.filter((m) => !m.is_placeholder).length} registered</span>
+                    <span>{initialMembers.filter((m) => !m.is_placeholder).length} registered</span>
                     <span>•</span>
-                    <span>{members.filter((m) => m.is_placeholder).length} not signed up</span>
+                    <span>{initialMembers.filter((m) => m.is_placeholder).length} not signed up</span>
                 </div>
             )}
 
