@@ -10,9 +10,6 @@ import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/features/groups/group-card";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { PendingSettlements } from "@/components/features/groups/pending-settlements";
-// TEMPORARILY bypass cached services - hit DB directly for debugging
-import { groupsServerService } from "@/services/groups.server";
-import { expensesServerService } from "@/services/expenses.server";
 import { formatCurrency } from "@/lib/currency";
 import { encryptUrlId } from "@/lib/url-ids";
 
@@ -24,26 +21,80 @@ export default async function DashboardPage() {
         redirect("/login");
     }
 
-    // DIRECT DB QUERIES - bypassing Redis cache for performance debugging
-    // All queries run in parallel
-    const [groupsResult, expensesResult, profile, summary] = await Promise.all([
-        groupsServerService.getGroups(user.id),
-        expensesServerService.getRecentExpenses(user.id, 5),
+    // ULTRA-FAST: Single parallel batch of simple queries
+    // No deep JOINs, no Redis, just fast indexed lookups
+    const [
+        groupMemberships,
+        recentExpensesResult,
+        profileResult,
+        // Summary queries run in parallel
+        paidByUserResult,
+        userSplitsResult,
+    ] = await Promise.all([
+        // 1. Get user's group memberships (fast - indexed)
+        supabase
+            .from("group_members")
+            .select("group_id, groups!inner(id, name, description, category, currency, updated_at)")
+            .eq("user_id", user.id)
+            .order("groups(updated_at)", { ascending: false })
+            .limit(10),
+        // 2. Recent expenses (simple query)
+        supabase
+            .from("expenses")
+            .select("id, description, amount, category, expense_date, paid_by, group_id")
+            .eq("paid_by", user.id)
+            .order("expense_date", { ascending: false })
+            .limit(5),
+        // 3. Profile (single row)
         supabase.from("profiles").select("full_name, currency").eq("id", user.id).single(),
-        expensesServerService.getUserExpenseSummary(user.id),
+        // 4. Total user has paid
+        supabase
+            .from("expense_splits")
+            .select("amount, expense:expenses!inner(paid_by)")
+            .eq("is_settled", false)
+            .neq("user_id", user.id),
+        // 5. Total user owes
+        supabase
+            .from("expense_splits")
+            .select("amount, expense:expenses!inner(paid_by)")
+            .eq("user_id", user.id)
+            .eq("is_settled", false),
     ]);
 
-    // Handle results
-    const groups = groupsResult?.data || [];
-    const expenses = expensesResult || [];
+    // Process results - using type assertions for speed (avoiding complex types)
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const groups = (groupMemberships.data || []).map((m: any) => ({
+        ...m.groups,
+        members: [],
+        member_count: 0,
+    }));
 
-    // Use pre-calculated summary
-    const totalOwed = summary?.totalOwed || 0;
-    const totalOwe = summary?.totalOwe || 0;
+    const expenses = (recentExpensesResult.data || []).map((e: any) => ({
+        ...e,
+        splits: [],
+        paid_by_profile: null,
+        paid_by_placeholder: null,
+    }));
+
+    // Calculate totals
+    const totalOwed = (paidByUserResult.data || [])
+        .filter((s: any) => {
+            const expense = Array.isArray(s.expense) ? s.expense[0] : s.expense;
+            return expense?.paid_by === user.id;
+        })
+        .reduce((sum: number, s: any) => sum + (s.amount || 0), 0);
+
+    const totalOwe = (userSplitsResult.data || [])
+        .filter((s: any) => {
+            const expense = Array.isArray(s.expense) ? s.expense[0] : s.expense;
+            return expense?.paid_by !== user.id;
+        })
+        .reduce((sum: number, s: any) => sum + (s.amount || 0), 0);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
     const netBalance = totalOwed - totalOwe;
-
-    const firstName = profile.data?.full_name?.split(" ")[0] || "there";
-    const currency = profile.data?.currency || "USD";
+    const firstName = profileResult.data?.full_name?.split(" ")[0] || "there";
+    const currency = profileResult.data?.currency || "USD";
 
     return (
         <div className="space-y-8">
