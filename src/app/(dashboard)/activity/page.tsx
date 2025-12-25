@@ -6,11 +6,13 @@ import { encryptUrlId } from "@/lib/url-ids";
 
 export default async function ActivityPage() {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    // Layout already verified auth - use getSession() for speed
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (!user) {
+    if (!session?.user) {
         redirect("/login");
     }
+    const user = session.user;
 
     const activities = await activitiesServerService.getUserActivities(user.id) || [];
 

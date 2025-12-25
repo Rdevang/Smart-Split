@@ -6,12 +6,13 @@ import { FriendsList } from "@/components/features/friends/friends-list";
 export default async function FriendsPage() {
     const supabase = await createClient();
 
-    // Use getUser() - validates session with Supabase Auth server (secure)
-    const { data: { user }, error } = await supabase.auth.getUser();
+    // Layout already verified auth with getUser() - use getSession() for speed
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (error || !user) {
+    if (!session?.user) {
         redirect("/login");
     }
+    const user = session.user;
 
     // Pre-fetch data server-side - no client waterfall
     const members = await friendsServerService.getPastGroupMembers(user.id);

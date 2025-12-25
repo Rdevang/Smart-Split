@@ -14,12 +14,13 @@ interface EmailPreferences {
 
 export default async function ProfileSettingsPage() {
     const supabase = await createClient();
+    // Layout already verified auth with getUser() - use getSession() for speed
+    const { data: { session } } = await supabase.auth.getSession();
 
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    if (!authUser) {
+    if (!session?.user) {
         return null;
     }
+    const authUser = session.user;
 
     // Fetch profile from database (only fields we need)
     const { data: profile } = await supabase

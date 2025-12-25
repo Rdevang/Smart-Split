@@ -20,27 +20,34 @@ import { encryptUrlId } from "@/lib/url-ids";
 export default async function DashboardPage() {
     const supabase = await createClient();
 
-    // Use getUser() - validates session with Supabase Auth server (secure)
-    const { data: { user }, error } = await supabase.auth.getUser();
+    // Layout already verified auth with getUser() - we just need the user ID
+    // Use getSession() here since layout guarantees authenticated user
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (error || !user) {
+    if (!session?.user) {
         redirect("/login");
     }
 
-    const userId = user.id;
+    const userId = session.user.id;
 
-    // SINGLE BATCH: All queries in parallel - 6 queries instead of 9
+    // OPTIMIZED: 4 queries in parallel (reduced from 5)
+    // Combined expense calculations into single queries with proper filtering
     const [
         profileResult,
         groupMembershipsResult,
-        paidByUserResult,
-        userSplitsResult,
+        expenseSplitsResult,
         recentExpensesResult,
     ] = await Promise.all([
+        // Only fetch currency since layout already has name
         supabase.from("profiles").select("full_name, currency").eq("id", userId).single(),
+        // Get user's groups
         supabase.from("group_members").select("group_id, groups!inner(id, name, description, category)").eq("user_id", userId).limit(3),
-        supabase.from("expense_splits").select("amount, expense:expenses!inner(paid_by)").eq("is_settled", false).neq("user_id", userId),
-        supabase.from("expense_splits").select("amount, expense:expenses!inner(paid_by)").eq("user_id", userId).eq("is_settled", false),
+        // Single query for all expense splits - filter in JS
+        supabase.from("expense_splits")
+            .select("amount, user_id, is_settled, expense:expenses!inner(paid_by)")
+            .eq("is_settled", false)
+            .limit(500),
+        // Recent expenses
         supabase.from("expenses").select("id, description, amount, expense_date").eq("paid_by", userId).order("expense_date", { ascending: false }).limit(5),
     ]);
 
@@ -53,12 +60,23 @@ export default async function DashboardPage() {
     const firstGroupId = groups[0]?.id;
     const groupCount = groups.length;
 
-    const totalOwed = (paidByUserResult.data || [])
-        .filter((s: any) => (Array.isArray(s.expense) ? s.expense[0] : s.expense)?.paid_by === userId)
-        .reduce((sum: number, s: any) => sum + (s.amount || 0), 0);
-    const totalOwe = (userSplitsResult.data || [])
-        .filter((s: any) => (Array.isArray(s.expense) ? s.expense[0] : s.expense)?.paid_by !== userId)
-        .reduce((sum: number, s: any) => sum + (s.amount || 0), 0);
+    // Calculate balances from combined expense splits query
+    const allSplits = expenseSplitsResult.data || [];
+    let totalOwed = 0;
+    let totalOwe = 0;
+    
+    for (const split of allSplits) {
+        const expense = Array.isArray(split.expense) ? split.expense[0] : split.expense;
+        const paidBy = expense?.paid_by;
+        
+        if (paidBy === userId && split.user_id !== userId) {
+            // User paid, someone else owes them
+            totalOwed += split.amount || 0;
+        } else if (paidBy !== userId && split.user_id === userId) {
+            // Someone else paid, user owes them
+            totalOwe += split.amount || 0;
+        }
+    }
     const netBalance = totalOwed - totalOwe;
 
     const expenses = recentExpensesResult.data || [];

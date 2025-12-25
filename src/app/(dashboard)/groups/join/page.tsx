@@ -11,13 +11,14 @@ interface JoinGroupPageProps {
 async function JoinGroupContent({ searchParams }: JoinGroupPageProps) {
     const params = await searchParams;
     const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
+    // Layout already verified auth with getUser() - use getSession() for speed
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (error || !user) {
+    if (!session?.user) {
         redirect(`/login?redirect=/groups/join${params.code ? `?code=${params.code}` : ""}`);
     }
 
-    return <JoinGroupForm initialCode={params.code || ""} userId={user.id} />;
+    return <JoinGroupForm initialCode={params.code || ""} userId={session.user.id} />;
 }
 
 export default function JoinGroupPage({ searchParams }: JoinGroupPageProps) {

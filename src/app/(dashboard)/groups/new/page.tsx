@@ -6,11 +6,13 @@ import { GroupForm } from "@/components/features/groups/group-form";
 
 export default async function NewGroupPage() {
     const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
+    // Layout already verified auth with getUser() - use getSession() for speed
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (error || !user) {
+    if (!session?.user) {
         redirect("/login");
     }
+    const user = session.user;
 
     return (
         <div className="mx-auto max-w-2xl space-y-6">

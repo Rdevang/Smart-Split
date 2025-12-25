@@ -182,22 +182,120 @@ export async function proxy(request: NextRequest) {
                 ip: clientIP,
             });
 
-            return new NextResponse(
-                JSON.stringify({
-                    error: "Too Many Requests",
-                    message: `Rate limit exceeded. Please try again in ${rateLimitResult.retryAfter} seconds.`,
-                    retryAfter: rateLimitResult.retryAfter,
-                    requestId,
-                }),
-                {
-                    status: 429,
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-Request-Id": requestId,
-                        ...createRateLimitHeaders(rateLimitResult),
-                    },
-                }
-            );
+            // For API routes, return JSON
+            if (pathname.startsWith("/api/")) {
+                return new NextResponse(
+                    JSON.stringify({
+                        error: "Too Many Requests",
+                        message: `Rate limit exceeded. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+                        retryAfter: rateLimitResult.retryAfter,
+                        requestId,
+                    }),
+                    {
+                        status: 429,
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Request-Id": requestId,
+                            ...createRateLimitHeaders(rateLimitResult),
+                        },
+                    }
+                );
+            }
+
+            // For page routes, return a friendly HTML error page
+            const retryAfter = rateLimitResult.retryAfter || 60;
+            const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Too Many Requests - Smart Split</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #f1f5f9;
+            padding: 20px;
+        }
+        .container {
+            text-align: center;
+            max-width: 500px;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: #f1f5f9;
+        }
+        p {
+            color: #94a3b8;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+        .timer {
+            font-size: 48px;
+            font-weight: 700;
+            color: #14b8a6;
+            margin-bottom: 24px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #14b8a6;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #0d9488;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">⏳</div>
+        <h1>Slow Down!</h1>
+        <p>You're making requests too quickly. Please wait a moment before trying again.</p>
+        <div class="timer" id="countdown">${retryAfter}</div>
+        <p style="font-size: 14px;">seconds remaining</p>
+        <a href="/" class="btn" style="margin-top: 16px;">Go to Homepage</a>
+    </div>
+    <script>
+        let seconds = ${retryAfter};
+        const countdown = document.getElementById('countdown');
+        const interval = setInterval(() => {
+            seconds--;
+            countdown.textContent = seconds;
+            if (seconds <= 0) {
+                clearInterval(interval);
+                window.location.reload();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>`;
+
+            return new NextResponse(html, {
+                status: 429,
+                headers: {
+                    "Content-Type": "text/html",
+                    "X-Request-Id": requestId,
+                    "Retry-After": String(retryAfter),
+                    ...createRateLimitHeaders(rateLimitResult),
+                },
+            });
         }
     }
 
