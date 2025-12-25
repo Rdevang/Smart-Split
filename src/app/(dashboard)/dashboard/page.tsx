@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { GroupCard } from "@/components/features/groups/group-card";
 import { ExpenseCard } from "@/components/features/expenses/expense-card";
 import { PendingSettlements } from "@/components/features/groups/pending-settlements";
-import { groupsCachedServerService } from "@/services/groups.cached.server";
-import { expensesCachedServerService } from "@/services/expenses.cached.server";
+// TEMPORARILY bypass cached services - hit DB directly for debugging
+import { groupsServerService } from "@/services/groups.server";
+import { expensesServerService } from "@/services/expenses.server";
 import { formatCurrency } from "@/lib/currency";
 import { encryptUrlId } from "@/lib/url-ids";
 
@@ -23,23 +24,20 @@ export default async function DashboardPage() {
         redirect("/login");
     }
 
-    // Fetch ALL data in parallel - using CACHED services for speed
-    // This is the key optimization: 4 parallel cached queries instead of N+3 sequential
-    const [groupsResult, recentExpenses, profile, summary] = await Promise.all([
-        groupsCachedServerService.getGroups(user.id),
-        expensesCachedServerService.getRecentExpenses(user.id, 5),
+    // DIRECT DB QUERIES - bypassing Redis cache for performance debugging
+    // All queries run in parallel
+    const [groupsResult, expensesResult, profile, summary] = await Promise.all([
+        groupsServerService.getGroups(user.id),
+        expensesServerService.getRecentExpenses(user.id, 5),
         supabase.from("profiles").select("full_name, currency").eq("id", user.id).single(),
-        // Use aggregated summary instead of N individual balance queries!
-        expensesCachedServerService.getUserExpenseSummary(user.id),
+        expensesServerService.getUserExpenseSummary(user.id),
     ]);
 
-    // Handle potential null from cache (cache penetration protection returns null)
+    // Handle results
     const groups = groupsResult?.data || [];
+    const expenses = expensesResult || [];
 
-    // Ensure recentExpenses is always an array (cache can return null)
-    const expenses = recentExpenses || [];
-
-    // Use pre-calculated summary - no more N+1 queries!
+    // Use pre-calculated summary
     const totalOwed = summary?.totalOwed || 0;
     const totalOwe = summary?.totalOwe || 0;
     const netBalance = totalOwed - totalOwe;
