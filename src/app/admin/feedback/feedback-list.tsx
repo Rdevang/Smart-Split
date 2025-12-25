@@ -246,7 +246,7 @@ export function AdminFeedbackList({ feedbacks }: AdminFeedbackListProps) {
     const router = useRouter();
     const [filter, setFilter] = useState<string>("all");
 
-    const filteredFeedbacks = feedbacks.filter((f) => {
+    const filteredFeedbacks = (feedbacks || []).filter((f) => {
         if (filter === "all") return true;
         if (filter === "pending") return ["submitted", "new", "under_review", "reviewing"].includes(f.status);
         if (filter === "resolved") return ["approved", "completed", "rejected", "declined", "closed"].includes(f.status);
@@ -254,11 +254,12 @@ export function AdminFeedbackList({ feedbacks }: AdminFeedbackListProps) {
     });
 
     // Stats
+    const safeFeedbacks = feedbacks || [];
     const stats = {
-        total: feedbacks.length,
-        pending: feedbacks.filter(f => ["submitted", "new", "under_review", "reviewing"].includes(f.status)).length,
-        approved: feedbacks.filter(f => ["approved", "completed"].includes(f.status)).length,
-        rejected: feedbacks.filter(f => ["rejected", "declined"].includes(f.status)).length,
+        total: safeFeedbacks.length,
+        pending: safeFeedbacks.filter(f => ["submitted", "new", "under_review", "reviewing"].includes(f.status)).length,
+        approved: safeFeedbacks.filter(f => ["approved", "completed"].includes(f.status)).length,
+        rejected: safeFeedbacks.filter(f => ["rejected", "declined"].includes(f.status)).length,
     };
 
     return (

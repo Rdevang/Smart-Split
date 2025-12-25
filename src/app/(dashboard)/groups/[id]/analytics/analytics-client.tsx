@@ -120,7 +120,8 @@ export function AnalyticsClient({
 
     // Filter expenses based on time period
     const filteredExpenses = useMemo(() => {
-        if (timeFilter === "all") return expenses;
+        const safeExpenses = expenses || [];
+        if (timeFilter === "all") return safeExpenses;
 
         const now = new Date();
         const cutoff = new Date();
@@ -131,7 +132,7 @@ export function AnalyticsClient({
             cutoff.setMonth(now.getMonth() - 1);
         }
 
-        return expenses.filter(e => {
+        return safeExpenses.filter(e => {
             const expenseDate = new Date(e.expense_date || "");
             return expenseDate >= cutoff;
         });
@@ -243,7 +244,7 @@ export function AnalyticsClient({
         };
     }, [filteredExpenses, expenses]);
 
-    if (expenses.length === 0) {
+    if (!expenses || expenses.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-20">
                 <div className="relative">
@@ -343,7 +344,7 @@ export function AnalyticsClient({
                         </div>
                         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4">
                             <Users className="h-5 w-5 text-violet-200 mb-2" />
-                            <p className="text-2xl font-bold">{group.members.length}</p>
+                            <p className="text-2xl font-bold">{(group.members || []).length}</p>
                             <p className="text-violet-200 text-sm">Members</p>
                         </div>
                         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4">
@@ -557,7 +558,7 @@ export function AnalyticsClient({
 
                 {/* Balance Summary Cards */}
                 <div className="flex gap-4 overflow-x-auto pb-4 mb-6 -mx-2 px-2">
-                    {balances
+                    {(balances || [])
                         .sort((a, b) => b.balance - a.balance)
                         .map((balance) => {
                             const isPositive = balance.balance >= 0;

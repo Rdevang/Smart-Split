@@ -17,7 +17,7 @@ export default async function GroupsPage() {
 
     // Using CACHED service for fast page loads
     const groupsResult = await groupsCachedServerService.getGroups(user.id);
-    const groups = groupsResult.data;
+    const groups = groupsResult?.data || [];
 
     return (
         <div className="space-y-8">

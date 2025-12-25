@@ -98,7 +98,7 @@ function getActivityMessage(activity: ActivityWithDetails): string {
 }
 
 export function ActivityFeed({ activities, showGroupName = true, encryptedGroupIds = {} }: ActivityFeedProps) {
-    if (activities.length === 0) {
+    if (!activities || activities.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 py-16 dark:border-gray-800">
                 <div className="rounded-full bg-gray-100 p-4 dark:bg-gray-800">
@@ -115,7 +115,7 @@ export function ActivityFeed({ activities, showGroupName = true, encryptedGroupI
     }
 
     // Group activities by date
-    const groupedActivities = activities.reduce((groups, activity) => {
+    const groupedActivities = (activities || []).reduce((groups, activity) => {
         const date = new Date(activity.created_at || "").toDateString();
         if (!groups[date]) {
             groups[date] = [];

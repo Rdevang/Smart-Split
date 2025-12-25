@@ -32,13 +32,13 @@ export default async function ExpensesPage() {
         expensesCachedServerService.getUserExpenses(user.id, { limit: 20 }),
     ]);
 
-    const groups = groupsResult.data;
-    const recentExpenses = expensesResult.data;
+    const groups = groupsResult?.data || [];
+    const recentExpenses = expensesResult?.data || [];
 
     // Calculate totals
     const totalOwed = recentExpenses.reduce((sum, expense) => {
         if (expense.paid_by === user.id) {
-            const othersOwe = expense.splits
+            const othersOwe = (expense.splits || [])
                 .filter((s) => s.user_id !== user.id && !s.is_settled)
                 .reduce((s, split) => s + split.amount, 0);
             return sum + othersOwe;
@@ -48,7 +48,7 @@ export default async function ExpensesPage() {
 
     const totalOwe = recentExpenses.reduce((sum, expense) => {
         if (expense.paid_by !== user.id) {
-            const userSplit = expense.splits.find((s) => s.user_id === user.id && !s.is_settled);
+            const userSplit = (expense.splits || []).find((s) => s.user_id === user.id && !s.is_settled);
             return sum + (userSplit?.amount || 0);
         }
         return sum;

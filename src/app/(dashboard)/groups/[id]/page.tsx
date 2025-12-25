@@ -225,7 +225,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                             <CardTitle className="text-base">Members</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {group.members.map((member) => {
+                            {(group.members || []).map((member) => {
                                 const isPlaceholder = member.is_placeholder;
                                 const memberName = isPlaceholder
                                     ? member.placeholder?.name
@@ -291,11 +291,11 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                     <AddMemberForm
                                         groupId={id}
                                         userId={user.id}
-                                        existingMemberIds={group.members
+                                        existingMemberIds={(group.members || [])
                                             .filter((m) => !m.is_placeholder)
                                             .map((m) => m.user_id || "")
                                             .filter(Boolean)}
-                                        existingMemberNames={group.members
+                                        existingMemberNames={(group.members || [])
                                             .filter((m) => m.is_placeholder)
                                             .map((m) => m.placeholder?.name || "")
                                             .filter(Boolean)}

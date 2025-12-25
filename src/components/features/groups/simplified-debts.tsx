@@ -57,7 +57,7 @@ function getRawDebtsFromExpenses(expenses: Expense[]): SimplifiedPayment[] {
     // Track gross debts: key is "fromId-toId", value is the debt info
     const grossDebts = new Map<string, SimplifiedPayment>();
 
-    for (const expense of expenses) {
+    for (const expense of expenses || []) {
         // Determine who paid
         const payerId = expense.paid_by || expense.paid_by_placeholder_id;
         if (!payerId) continue;
@@ -68,7 +68,7 @@ function getRawDebtsFromExpenses(expenses: Expense[]): SimplifiedPayment[] {
         const payerIsPlaceholder = !!expense.paid_by_placeholder_id;
 
         // Each split participant owes the payer (except the payer themselves)
-        for (const split of expense.splits) {
+        for (const split of expense.splits || []) {
             // Skip settled splits - they're already paid
             if (split.is_settled) continue;
             

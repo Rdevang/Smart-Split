@@ -12,7 +12,7 @@ export default async function ActivityPage() {
         redirect("/login");
     }
 
-    const activities = await activitiesServerService.getUserActivities(user.id);
+    const activities = await activitiesServerService.getUserActivities(user.id) || [];
 
     // Pre-encrypt group IDs for secure URLs
     const encryptedGroupIds: Record<string, string> = {};

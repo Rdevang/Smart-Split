@@ -168,7 +168,7 @@ function FeedbackCard({ feedback }: { feedback: Feedback }) {
 }
 
 export function FeedbackHistory({ feedbacks }: FeedbackHistoryProps) {
-    if (feedbacks.length === 0) {
+    if (!feedbacks || feedbacks.length === 0) {
         return (
             <Card>
                 <CardContent className="flex flex-col items-center justify-center py-16">
@@ -198,7 +198,7 @@ export function FeedbackHistory({ feedbacks }: FeedbackHistoryProps) {
                 <Card>
                     <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                            {feedbacks.length}
+                            {(feedbacks || []).length}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">Total</p>
                     </CardContent>
@@ -206,7 +206,7 @@ export function FeedbackHistory({ feedbacks }: FeedbackHistoryProps) {
                 <Card>
                     <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold text-yellow-600">
-                            {feedbacks.filter(f => ["submitted", "new", "under_review", "reviewing"].includes(f.status)).length}
+                            {(feedbacks || []).filter(f => ["submitted", "new", "under_review", "reviewing"].includes(f.status)).length}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">Pending</p>
                     </CardContent>
@@ -214,7 +214,7 @@ export function FeedbackHistory({ feedbacks }: FeedbackHistoryProps) {
                 <Card>
                     <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold text-green-600">
-                            {feedbacks.filter(f => ["approved", "completed", "planned", "in_progress"].includes(f.status)).length}
+                            {(feedbacks || []).filter(f => ["approved", "completed", "planned", "in_progress"].includes(f.status)).length}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">Approved</p>
                     </CardContent>
@@ -222,7 +222,7 @@ export function FeedbackHistory({ feedbacks }: FeedbackHistoryProps) {
                 <Card>
                     <CardContent className="p-4 text-center">
                         <p className="text-2xl font-bold text-gray-600">
-                            {feedbacks.filter(f => ["rejected", "declined", "closed"].includes(f.status)).length}
+                            {(feedbacks || []).filter(f => ["rejected", "declined", "closed"].includes(f.status)).length}
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">Closed</p>
                     </CardContent>
@@ -241,7 +241,7 @@ export function FeedbackHistory({ feedbacks }: FeedbackHistoryProps) {
 
             {/* Feedback List */}
             <div className="space-y-3">
-                {feedbacks.map((feedback) => (
+                {(feedbacks || []).map((feedback) => (
                     <FeedbackCard key={feedback.id} feedback={feedback} />
                 ))}
             </div>

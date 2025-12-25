@@ -132,7 +132,7 @@ export function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete
         return "Unknown";
     };
 
-    const userSplit = expense.splits.find((s) => s.user_id === currentUserId);
+    const userSplit = (expense.splits || []).find((s) => s.user_id === currentUserId);
     const userOwes = userSplit && !paidByUser ? userSplit.amount : 0;
     const userIsOwed = paidByUser ? expense.amount - (userSplit?.amount || 0) : 0;
 
@@ -191,7 +191,7 @@ export function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete
 
                         {/* Splits */}
                         <div className="mt-3 flex flex-wrap gap-2">
-                            {expense.splits.map((split) => {
+                            {(expense.splits || []).map((split) => {
                                 const { name, avatarUrl, isPlaceholder } = getSplitDisplayInfo(split, currentUserId);
 
                                 return (

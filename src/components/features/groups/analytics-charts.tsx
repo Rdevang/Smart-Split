@@ -110,7 +110,7 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
     const { categoryData, total } = useMemo(() => {
         const categoryMap = new Map<string, number>();
         let totalAmount = 0;
-        expenses.forEach((expense) => {
+        (expenses || []).forEach((expense) => {
             const category = expense.category || "other";
             categoryMap.set(category, (categoryMap.get(category) || 0) + expense.amount);
             totalAmount += expense.amount;
@@ -247,7 +247,7 @@ interface TrendChartProps {
 export function TrendChart({ expenses, currency }: TrendChartProps) {
     const { trendData, trend } = useMemo(() => {
         const dayMap = new Map<string, number>();
-        expenses.forEach((expense) => {
+        (expenses || []).forEach((expense) => {
             const dateStr = expense.expense_date || new Date().toISOString();
             const date = new Date(dateStr);
             const dayKey = date.toISOString().split("T")[0];
@@ -380,7 +380,7 @@ export function ContributionsChart({ expenses, currency }: ContributionsChartPro
     const { contributionData, maxAmount } = useMemo(() => {
         const paidMap = new Map<string, { name: string; amount: number }>();
 
-        expenses.forEach((expense) => {
+        (expenses || []).forEach((expense) => {
             const payerId = expense.paid_by || expense.paid_by_placeholder?.id || "unknown";
             const payerName = expense.paid_by_profile?.full_name
                 || expense.paid_by_placeholder?.name
@@ -476,7 +476,7 @@ export function SpendByMemberChart({ expenses, currency, currentUserId }: SpendB
     const memberData = useMemo(() => {
         const memberMap = new Map<string, { name: string; paid: number; owes: number }>();
 
-        expenses.forEach((expense) => {
+        (expenses || []).forEach((expense) => {
             // Track who paid
             const payerId = expense.paid_by || expense.paid_by_placeholder?.id || "unknown";
             const payerName = expense.paid_by_profile?.full_name
@@ -490,7 +490,7 @@ export function SpendByMemberChart({ expenses, currency, currentUserId }: SpendB
 
             // Track who owes
             if (expense.splits && expense.splits.length > 0) {
-                expense.splits.forEach((split) => {
+                (expense.splits || []).forEach((split) => {
                     const memberId = split.user_id || split.placeholder_id || "unknown";
                     const memberName = split.profile?.full_name
                         || split.placeholder?.name
@@ -605,7 +605,7 @@ interface BalancesChartProps {
 
 export function BalancesChart({ balances, currency, currentUserId }: BalancesChartProps) {
     const balanceData = useMemo(() => {
-        return balances
+        return (balances || [])
             .map((b, idx) => ({
                 name: b.user_id === currentUserId ? "You" : (b.user_name || "Unknown").split(" ")[0],
                 balance: b.balance,
@@ -710,7 +710,7 @@ export function DailyBreakdownChart({ expenses, currency }: DailyBreakdownChartP
         };
         const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-        expenses.forEach((expense) => {
+        (expenses || []).forEach((expense) => {
             const dateStr = expense.expense_date || new Date().toISOString();
             const date = new Date(dateStr);
             const dayName = dayNames[date.getDay()];
@@ -772,7 +772,7 @@ interface TopExpensesListProps {
 
 export function TopExpensesList({ expenses, currency, limit = 5 }: TopExpensesListProps) {
     const topExpenses = useMemo(() => {
-        return [...expenses]
+        return [...(expenses || [])]
             .sort((a, b) => b.amount - a.amount)
             .slice(0, limit);
     }, [expenses, limit]);
