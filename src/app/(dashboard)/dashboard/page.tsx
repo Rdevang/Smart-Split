@@ -23,11 +23,14 @@ export default async function DashboardPage() {
         redirect("/login");
     }
 
-    // Fetch data in parallel - using CACHED services for speed
-    const [groupsResult, recentExpenses, profile] = await Promise.all([
+    // Fetch ALL data in parallel - using CACHED services for speed
+    // This is the key optimization: 4 parallel cached queries instead of N+3 sequential
+    const [groupsResult, recentExpenses, profile, summary] = await Promise.all([
         groupsCachedServerService.getGroups(user.id),
         expensesCachedServerService.getRecentExpenses(user.id, 5),
         supabase.from("profiles").select("full_name, currency").eq("id", user.id).single(),
+        // Use aggregated summary instead of N individual balance queries!
+        expensesCachedServerService.getUserExpenseSummary(user.id),
     ]);
 
     // Handle potential null from cache (cache penetration protection returns null)
@@ -36,34 +39,11 @@ export default async function DashboardPage() {
     // Ensure recentExpenses is always an array (cache can return null)
     const expenses = recentExpenses || [];
 
-    // Calculate summary stats from ALL group balances (not just recent expenses)
-    // Fetch balances for all groups the user is in - CACHED for performance
-    const balancePromises = groups.map((group) =>
-        groupsCachedServerService.getGroupBalances(group.id)
-    );
-    const allGroupBalances = await Promise.all(balancePromises);
-
-    let totalOwed = 0;
-    let totalOwe = 0;
-
-    // Sum up user's balance across all groups
-    allGroupBalances.forEach((balances) => {
-        // Handle potential null from cache
-        if (!balances) return;
-
-        const userBalance = balances.find((b) => b.user_id === user.id);
-        if (userBalance) {
-            if (userBalance.balance > 0) {
-                // Positive balance means others owe the user
-                totalOwed += userBalance.balance;
-            } else {
-                // Negative balance means user owes others
-                totalOwe += Math.abs(userBalance.balance);
-            }
-        }
-    });
-
+    // Use pre-calculated summary - no more N+1 queries!
+    const totalOwed = summary?.totalOwed || 0;
+    const totalOwe = summary?.totalOwe || 0;
     const netBalance = totalOwed - totalOwe;
+    
     const firstName = profile.data?.full_name?.split(" ")[0] || "there";
     const currency = profile.data?.currency || "USD";
 
