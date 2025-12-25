@@ -194,3 +194,6 @@ storybook-static/
 
 # Load testing (local development only)
 load-testing/
+
+# Scripts (local development/testing only)
+scripts/
