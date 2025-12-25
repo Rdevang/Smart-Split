@@ -25,6 +25,33 @@ import Image from "next/image";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { NotificationBell } from "@/components/layout/notification-bell";
 
+// Skeleton for streaming - shows while navbar loads
+export function NavbarSkeleton() {
+    return (
+        <header className="sticky top-0 z-50 w-full border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/80">
+            <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+                <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-teal-600">
+                        <Wallet className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-xl font-bold text-gray-900 dark:text-white">
+                        Smart<span className="text-teal-600">Split</span>
+                    </span>
+                </div>
+                <div className="hidden md:flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="h-8 w-20 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
+                    ))}
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 bg-gray-100 dark:bg-gray-800 rounded-full animate-pulse" />
+                    <div className="h-8 w-8 bg-gray-100 dark:bg-gray-800 rounded-full animate-pulse" />
+                </div>
+            </div>
+        </header>
+    );
+}
+
 interface NavbarProps {
     user: {
         id: string;
