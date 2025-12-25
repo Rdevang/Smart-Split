@@ -274,13 +274,18 @@ async function DashboardContent({ userId }: { userId: string }) {
 
 export default async function DashboardPage() {
     const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
 
-    if (error || !user) {
+    // Use getSession() - cheaper than getUser() since layout already verified auth
+    // getSession() reads from cookie, getUser() makes a Supabase API call
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session?.user) {
         redirect("/login");
     }
 
-    // EVERYTHING is streamed - only auth blocks
+    const user = session.user;
+
+    // EVERYTHING is streamed - only session read blocks (local, ~0ms)
     return (
         <div className="space-y-8">
             {/* Header - Streamed */}
