@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useTransition } from "react";
+import { useState, useRef, useEffect, useCallback, useTransition, lazy, Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Link } from "@/components/ui/link";
 import {
@@ -23,7 +23,11 @@ import { cn } from "@/lib/utils";
 import { signOut } from "@/app/(auth)/actions";
 import Image from "next/image";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { NotificationBell } from "@/components/layout/notification-bell";
+
+// Lazy load notification bell - not critical for FCP
+const NotificationBell = lazy(() =>
+    import("@/components/layout/notification-bell").then(m => ({ default: m.NotificationBell }))
+);
 
 // Skeleton for streaming - shows while navbar loads
 export function NavbarSkeleton() {
@@ -187,8 +191,10 @@ export function Navbar({ user }: NavbarProps) {
                         {/* Theme Toggle */}
                         <ThemeToggle />
 
-                        {/* Notifications */}
-                        <NotificationBell userId={user.id} />
+                        {/* Notifications - lazy loaded */}
+                        <Suspense fallback={<div className="h-8 w-8 rounded-full bg-gray-100 dark:bg-gray-800 animate-pulse" />}>
+                            <NotificationBell userId={user.id} />
+                        </Suspense>
 
                         {/* Profile Dropdown */}
                         <div className="relative" ref={profileRef}>
