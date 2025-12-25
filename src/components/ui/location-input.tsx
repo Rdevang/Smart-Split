@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MapPin, Navigation, Loader2, X } from "lucide-react";
@@ -33,6 +33,14 @@ export function LocationInput({
 }: LocationInputProps) {
     const [isLoadingLocation, setIsLoadingLocation] = useState(false);
     const [locationError, setLocationError] = useState<string | null>(null);
+
+    // Auto-dismiss location error after 5 seconds (it's just a warning)
+    useEffect(() => {
+        if (locationError) {
+            const timer = setTimeout(() => setLocationError(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [locationError]);
 
     // Handle manual text input
     const handleTextChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,9 +193,15 @@ export function LocationInput({
             )}
 
             {/* Error messages */}
-            {(error || locationError) && (
+            {error && (
                 <p className="text-sm text-red-600 dark:text-red-400">
-                    {error || locationError}
+                    {error}
+                </p>
+            )}
+            {/* Location error is a warning, not blocking - manual input still works */}
+            {locationError && !error && (
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                    {locationError} You can still enter location manually.
                 </p>
             )}
         </div>

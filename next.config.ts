@@ -32,7 +32,7 @@ const securityHeaders = [
   {
     // Permissions Policy (formerly Feature-Policy)
     key: "Permissions-Policy",
-    value: "camera=(self), microphone=(), geolocation=(), payment=()",
+    value: "camera=(self), microphone=(), geolocation=(self), payment=()",
   },
   {
     // Content Security Policy
@@ -43,7 +43,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'", // Required for Tailwind
       "img-src 'self' data: blob: https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://cizakzarkdgieclbwljy.supabase.co https://www.googletagmanager.com https://www.google-analytics.com",
       "font-src 'self'",
-      "connect-src 'self' https://cizakzarkdgieclbwljy.supabase.co wss://cizakzarkdgieclbwljy.supabase.co https://*.upstash.io https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com",
+      "connect-src 'self' https://cizakzarkdgieclbwljy.supabase.co wss://cizakzarkdgieclbwljy.supabase.co https://*.upstash.io https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org",
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",
