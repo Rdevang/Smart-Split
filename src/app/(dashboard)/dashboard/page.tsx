@@ -43,7 +43,7 @@ export default async function DashboardPage() {
     const totalOwed = summary?.totalOwed || 0;
     const totalOwe = summary?.totalOwe || 0;
     const netBalance = totalOwed - totalOwe;
-    
+
     const firstName = profile.data?.full_name?.split(" ")[0] || "there";
     const currency = profile.data?.currency || "USD";
 

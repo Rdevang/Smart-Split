@@ -22,15 +22,15 @@ export default async function GroupSettingsPage({ params }: GroupSettingsPagePro
         redirect("/login");
     }
 
-    // Using CACHED service for fast page loads
-    const group = await groupsCachedServerService.getGroup(id);
+    // Fetch group data and admin status in parallel
+    const [group, isAdmin] = await Promise.all([
+        groupsCachedServerService.getGroup(id),
+        groupsCachedServerService.isUserAdmin(id, user.id),
+    ]);
 
     if (!group) {
         notFound();
     }
-
-    // Check if user is admin - cached
-    const isAdmin = await groupsCachedServerService.isUserAdmin(id, user.id);
 
     if (!isAdmin) {
         redirect(`/groups/${encryptUrlId(id)}`);

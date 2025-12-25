@@ -17,23 +17,17 @@ export default async function ExpensesPage() {
         redirect("/login");
     }
 
-    // Fetch profile for currency preference
-    const { data: profile } = await supabase
-        .from("profiles")
-        .select("currency")
-        .eq("id", user.id)
-        .single();
-
-    const currency = profile?.currency || "USD";
-
-    // Using CACHED services for fast page loads
-    const [groupsResult, expensesResult] = await Promise.all([
+    // ALL queries run in parallel - no sequential waterfalls!
+    const [groupsResult, expensesResult, profileResult] = await Promise.all([
         groupsCachedServerService.getGroups(user.id),
         expensesCachedServerService.getUserExpenses(user.id, { limit: 20 }),
+        // Profile query also in parallel for currency preference
+        supabase.from("profiles").select("currency").eq("id", user.id).single(),
     ]);
 
     const groups = groupsResult?.data || [];
     const recentExpenses = expensesResult?.data || [];
+    const currency = profileResult.data?.currency || "USD";
 
     // Calculate totals
     const totalOwed = recentExpenses.reduce((sum, expense) => {
