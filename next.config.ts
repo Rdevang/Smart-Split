@@ -39,11 +39,11 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com", // Required for Next.js + Google Analytics/GTM
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://va.vercel-scripts.com", // Required for Next.js + Google Analytics/GTM + Vercel Analytics
       "style-src 'self' 'unsafe-inline'", // Required for Tailwind
       "img-src 'self' data: blob: https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://cizakzarkdgieclbwljy.supabase.co https://www.googletagmanager.com https://www.google-analytics.com",
       "font-src 'self'",
-      "connect-src 'self' https://cizakzarkdgieclbwljy.supabase.co wss://cizakzarkdgieclbwljy.supabase.co https://*.upstash.io https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://nominatim.openstreetmap.org",
+      "connect-src 'self' https://cizakzarkdgieclbwljy.supabase.co wss://cizakzarkdgieclbwljy.supabase.co https://*.upstash.io https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://photon.komoot.io https://va.vercel-scripts.com https://vitals.vercel-insights.com",
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",

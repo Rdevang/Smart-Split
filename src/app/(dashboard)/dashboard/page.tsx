@@ -20,14 +20,14 @@ import { encryptUrlId } from "@/lib/url-ids";
 export default async function DashboardPage() {
     const supabase = await createClient();
 
-    // Use getSession() - reads from cookie (~0ms)
-    const { data: { session } } = await supabase.auth.getSession();
+    // Use getUser() - validates session with Supabase Auth server (secure)
+    const { data: { user }, error } = await supabase.auth.getUser();
 
-    if (!session?.user) {
+    if (error || !user) {
         redirect("/login");
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
 
     // SINGLE BATCH: All queries in parallel - 6 queries instead of 9
     const [

@@ -5,16 +5,16 @@ import { FriendsList } from "@/components/features/friends/friends-list";
 
 export default async function FriendsPage() {
     const supabase = await createClient();
-    
-    // Use getSession() - reads from cookie (~0ms)
-    const { data: { session } } = await supabase.auth.getSession();
 
-    if (!session?.user) {
+    // Use getUser() - validates session with Supabase Auth server (secure)
+    const { data: { user }, error } = await supabase.auth.getUser();
+
+    if (error || !user) {
         redirect("/login");
     }
 
     // Pre-fetch data server-side - no client waterfall
-    const members = await friendsServerService.getPastGroupMembers(session.user.id);
+    const members = await friendsServerService.getPastGroupMembers(user.id);
 
     return (
         <div className="space-y-6">
