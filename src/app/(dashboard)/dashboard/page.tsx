@@ -30,7 +30,11 @@ export default async function DashboardPage() {
         supabase.from("profiles").select("full_name, currency").eq("id", user.id).single(),
     ]);
 
-    const groups = groupsResult.data;
+    // Handle potential null from cache (cache penetration protection returns null)
+    const groups = groupsResult?.data || [];
+
+    // Ensure recentExpenses is always an array (cache can return null)
+    const expenses = recentExpenses || [];
 
     // Calculate summary stats from ALL group balances (not just recent expenses)
     // Fetch balances for all groups the user is in - CACHED for performance
@@ -44,6 +48,9 @@ export default async function DashboardPage() {
 
     // Sum up user's balance across all groups
     allGroupBalances.forEach((balances) => {
+        // Handle potential null from cache
+        if (!balances) return;
+
         const userBalance = balances.find((b) => b.user_id === user.id);
         if (userBalance) {
             if (userBalance.balance > 0) {
@@ -234,7 +241,7 @@ export default async function DashboardPage() {
                         </Link>
                     </div>
 
-                    {recentExpenses.length === 0 ? (
+                    {expenses.length === 0 ? (
                         <Card>
                             <CardContent className="flex flex-col items-center py-8">
                                 <Receipt className="h-10 w-10 text-gray-300 dark:text-gray-600" />
@@ -245,7 +252,7 @@ export default async function DashboardPage() {
                         </Card>
                     ) : (
                         <div className="space-y-3">
-                            {recentExpenses.map((expense) => (
+                            {expenses.map((expense) => (
                                 <ExpenseCard
                                     key={expense.id}
                                     expense={expense}

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
+import { LocationInput, type LocationData } from "@/components/ui/location-input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { expensesService } from "@/services/expenses";
@@ -108,6 +109,7 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
         group.members.map((m) => getMemberId(m))
     );
     const [customSplits, setCustomSplits] = useState<Record<string, number>>({});
+    const [location, setLocation] = useState<LocationData | undefined>();
 
     const {
         register,
@@ -239,6 +241,8 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                     split_type: splitType,
                     expense_date: data.expense_date,
                     notes: data.notes,
+                    location: location?.name,
+                    location_coordinates: location?.coordinates,
                     splits,
                 },
                 userId
@@ -348,6 +352,14 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                             onChange={(value) => setSplitType(value as SplitType)}
                         />
                     </div>
+
+                    {/* Location Input */}
+                    <LocationInput
+                        label="Location (optional)"
+                        value={location}
+                        onChange={setLocation}
+                        placeholder="Where was this expense?"
+                    />
 
                     {/* Split Configuration */}
                     <div className="space-y-4">

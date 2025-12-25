@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import {
     Utensils, Car, Film, Zap, Home, ShoppingBag, Plane,
-    Heart, ShoppingCart, MoreHorizontal, Trash2, Receipt, UserCircle
+    Heart, ShoppingCart, MoreHorizontal, Trash2, Receipt, UserCircle, MapPin
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,8 @@ interface ExpenseCardExpense {
         name: string;
         email: string | null;
     } | null;
+    location?: string | null;
+    location_coordinates?: { lat: number; lng: number } | null;
     splits: Split[];
 }
 
@@ -163,6 +165,12 @@ export function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete
                                         {getPayerName()}
                                     </span>
                                 </p>
+                                {expense.location && (
+                                    <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                                        <MapPin className="h-3 w-3" />
+                                        <span className="truncate max-w-[200px]">{expense.location}</span>
+                                    </p>
+                                )}
                             </div>
                             <div className="text-right">
                                 <p className="font-semibold text-gray-900 dark:text-white">

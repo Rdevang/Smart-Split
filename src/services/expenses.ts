@@ -155,6 +155,8 @@ export interface CreateExpenseInput {
     split_type: SplitType;
     expense_date?: string;
     notes?: string;
+    location?: string;
+    location_coordinates?: { lat: number; lng: number };
     splits: {
         user_id?: string;
         placeholder_id?: string;
@@ -315,6 +317,8 @@ export const expensesService = {
             split_type: input.split_type,
             expense_date: input.expense_date || new Date().toISOString().split("T")[0],
             notes: input.notes || null,
+            location: input.location || null,
+            location_coordinates: input.location_coordinates || null,
         };
 
         // Set either paid_by (user) or paid_by_placeholder_id (placeholder)
