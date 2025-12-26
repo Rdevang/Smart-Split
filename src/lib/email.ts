@@ -8,6 +8,8 @@
  * 3. Verify your domain in Resend dashboard (optional but recommended)
  */
 
+import { logger } from "@/lib/logger";
+
 // Conditionally import Resend to avoid build errors if not installed
 let Resend: typeof import("resend").Resend | null = null;
 
@@ -17,14 +19,14 @@ async function getResendClient() {
             const resendModule = await import("resend");
             Resend = resendModule.Resend;
         } catch {
-            console.warn("Resend not installed. Run: npm install resend");
+            logger.warn("Resend not installed. Run: npm install resend");
             return null;
         }
     }
 
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-        console.warn("RESEND_API_KEY not configured");
+        logger.warn("RESEND_API_KEY not configured");
         return null;
     }
 
@@ -73,7 +75,7 @@ export async function sendEmail(params: SendEmailParams): Promise<{
         const resend = await getResendClient();
 
         if (!resend) {
-            console.log("[Email] Skipping email send - Resend not configured");
+            logger.info("[Email] Skipping email send - Resend not configured");
             return { success: false, error: "Email service not configured" };
         }
 
@@ -91,28 +93,29 @@ export async function sendEmail(params: SendEmailParams): Promise<{
             const errorMessage = error.message?.toLowerCase() || "";
             if (errorMessage.includes("rate") || errorMessage.includes("limit") || 
                 errorMessage.includes("too many") || errorMessage.includes("quota")) {
-                console.warn("[Email] Rate limit reached:", error.message);
+                logger.warn("[Email] Rate limit reached", { error: error.message });
                 return { success: false, error: error.message, rateLimited: true };
             }
             
-            console.error("[Email] Send failed:", error.message);
+            logger.error("[Email] Send failed", new Error(error.message));
             return { success: false, error: error.message };
         }
 
-        console.log("[Email] Sent successfully:", data?.id);
+        logger.info("[Email] Sent successfully", { id: data?.id });
         return { success: true, id: data?.id };
-    } catch (error) {
+    } catch (err) {
         // Handle any unexpected errors gracefully
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const error = err instanceof Error ? err : new Error(String(err));
+        const errorMessage = error.message;
         
         // Check for rate limit in caught errors
         if (errorMessage.toLowerCase().includes("rate") || 
             errorMessage.toLowerCase().includes("limit")) {
-            console.warn("[Email] Rate limit error caught:", errorMessage);
+            logger.warn("[Email] Rate limit error caught", { error: errorMessage });
             return { success: false, error: errorMessage, rateLimited: true };
         }
         
-        console.error("[Email] Unexpected error:", errorMessage);
+        logger.error("[Email] Unexpected error", error);
         return { success: false, error: "Failed to send email" };
     }
 }

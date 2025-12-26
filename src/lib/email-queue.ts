@@ -10,6 +10,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 import { sendEmail } from "./email";
 
 // Rate limiting: Resend allows 100/second, we'll be conservative
@@ -66,26 +67,26 @@ export async function queueEmail(params: {
             // Check for rate limit errors
             if (error.message.includes("rate limit") || error.message.includes("Rate limit") ||
                 error.message.includes("too many") || error.message.includes("Too many")) {
-                console.warn("[EmailQueue] Rate limit reached, email skipped:", params.emailType);
+                logger.warn("[EmailQueue] Rate limit reached, email skipped", { emailType: params.emailType });
                 return { queued: false, rateLimited: true, error: "Rate limit reached" };
             }
 
-            console.error("[EmailQueue] Failed to queue email:", error.message);
+            logger.error("[EmailQueue] Failed to queue email", new Error(error.message));
             return { queued: false, error: error.message };
         }
 
         // If data is null, user opted out of this email type
         if (data === null) {
-            console.log("[EmailQueue] Email skipped - user opted out:", params.emailType);
+            logger.info("[EmailQueue] Email skipped - user opted out", { emailType: params.emailType });
             return { queued: false, skipped: true };
         }
 
         return { queued: true };
     } catch (err) {
         // Catch any unexpected errors and return gracefully
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
-        console.error("[EmailQueue] Unexpected error queuing email:", errorMessage);
-        return { queued: false, error: errorMessage };
+        const error = err instanceof Error ? err : new Error(String(err));
+        logger.error("[EmailQueue] Unexpected error queuing email", error);
+        return { queued: false, error: error.message };
     }
 }
 
@@ -109,7 +110,7 @@ export async function processEmailQueue(): Promise<{
     try {
         supabase = await createClient();
     } catch (err) {
-        console.error("[EmailQueue] Failed to create Supabase client:", err);
+        logger.error("[EmailQueue] Failed to create Supabase client", err instanceof Error ? err : new Error(String(err)));
         return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: ["Database connection failed"] };
     }
 
@@ -126,13 +127,13 @@ export async function processEmailQueue(): Promise<{
         }) as { data: QueuedEmail[] | null; error: Error | null };
 
         if (error) {
-            console.error("[EmailQueue] Failed to fetch pending emails:", error);
+            logger.error("[EmailQueue] Failed to fetch pending emails", new Error(error.message));
             return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: [error.message] };
         }
 
         emails = data || [];
     } catch (err) {
-        console.error("[EmailQueue] Error fetching emails:", err);
+        logger.error("[EmailQueue] Error fetching emails", err instanceof Error ? err : new Error(String(err)));
         return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: ["Failed to fetch emails"] };
     }
 
@@ -140,7 +141,7 @@ export async function processEmailQueue(): Promise<{
         return { processed: 0, sent: 0, failed: 0, rateLimited: 0, errors: [] };
     }
 
-    console.log(`[EmailQueue] Processing ${emails.length} emails...`);
+    logger.info(`[EmailQueue] Processing ${emails.length} emails...`);
 
     // Process emails with rate limiting
     for (const email of emails) {
@@ -165,7 +166,7 @@ export async function processEmailQueue(): Promise<{
                 sent++;
             } else if (result.rateLimited) {
                 // Rate limited - stop processing and leave remaining emails for next batch
-                console.warn("[EmailQueue] Rate limit hit, stopping batch processing");
+                logger.warn("[EmailQueue] Rate limit hit, stopping batch processing");
                 rateLimited++;
 
                 // Mark this email to retry later (don't count as failure)
@@ -199,7 +200,7 @@ export async function processEmailQueue(): Promise<{
 
             // Check if this is a rate limit error
             if (errorMsg.toLowerCase().includes("rate") || errorMsg.toLowerCase().includes("limit")) {
-                console.warn("[EmailQueue] Rate limit error, stopping batch");
+                logger.warn("[EmailQueue] Rate limit error, stopping batch");
                 rateLimited++;
                 break;
             }
@@ -220,7 +221,7 @@ export async function processEmailQueue(): Promise<{
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_EMAILS_MS));
     }
 
-    console.log(`[EmailQueue] Processed: ${sent + failed + rateLimited}, Sent: ${sent}, Failed: ${failed}, Rate Limited: ${rateLimited}`);
+    logger.info(`[EmailQueue] Processed: ${sent + failed + rateLimited}, Sent: ${sent}, Failed: ${failed}, Rate Limited: ${rateLimited}`);
 
     return {
         processed: sent + failed + rateLimited,
@@ -243,7 +244,7 @@ export async function userWantsEmail(userId: string, emailType: string): Promise
     });
 
     if (error) {
-        console.error("[EmailQueue] Failed to check email preference:", error);
+        logger.error("[EmailQueue] Failed to check email preference", new Error(error.message));
         return true; // Default to sending if check fails
     }
 

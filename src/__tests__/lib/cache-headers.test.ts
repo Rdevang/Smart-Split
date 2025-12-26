@@ -94,14 +94,14 @@ describe("cache-headers utilities", () => {
 
     describe("getCacheHeaders", () => {
         it("returns headers object with Cache-Control", () => {
-            const headers = getCacheHeaders("public-dynamic");
+            const headers = getCacheHeaders("public-dynamic") as Record<string, string>;
             
             expect(headers).toHaveProperty("Cache-Control");
             expect(headers["Cache-Control"]).toContain("public");
         });
 
         it("includes Vary header for Accept-Encoding", () => {
-            const headers = getCacheHeaders("public-dynamic");
+            const headers = getCacheHeaders("public-dynamic") as Record<string, string>;
             
             expect(headers).toHaveProperty("Vary", "Accept-Encoding");
         });
@@ -116,15 +116,15 @@ describe("cache-headers utilities", () => {
             ];
 
             profiles.forEach((profile) => {
-                const headers = getCacheHeaders(profile);
+                const headers = getCacheHeaders(profile) as Record<string, string>;
                 expect(headers).toHaveProperty("Cache-Control");
                 expect(headers).toHaveProperty("Vary");
             });
         });
 
         it("returns consistent values on multiple calls", () => {
-            const headers1 = getCacheHeaders("public-dynamic");
-            const headers2 = getCacheHeaders("public-dynamic");
+            const headers1 = getCacheHeaders("public-dynamic") as Record<string, string>;
+            const headers2 = getCacheHeaders("public-dynamic") as Record<string, string>;
             
             expect(headers1["Cache-Control"]).toBe(headers2["Cache-Control"]);
         });
