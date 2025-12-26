@@ -14,6 +14,7 @@ import {
     generateGroupInvitationHtml,
     generateSettlementRequestHtml,
 } from "./email";
+import { logger } from "@/lib/logger";
 
 // Log levels for notification events
 type NotificationLogLevel = "info" | "warn" | "error";
@@ -44,13 +45,14 @@ function log(level: NotificationLogLevel, type: string, message: string, metadat
         notificationLogs.shift();
     }
 
-    const prefix = `[Notification:${type}]`;
+    const logMessage = `[Notification:${type}] ${message}`;
+
     if (level === "error") {
-        console.error(prefix, message, metadata || "");
+        logger.error(logMessage, undefined, metadata);
     } else if (level === "warn") {
-        console.warn(prefix, message, metadata || "");
+        logger.warn(logMessage, metadata);
     } else {
-        console.log(prefix, message, metadata || "");
+        logger.info(logMessage, metadata);
     }
 }
 

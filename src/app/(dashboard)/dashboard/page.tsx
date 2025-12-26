@@ -9,13 +9,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/currency";
 import { encryptUrlId } from "@/lib/url-ids";
+import type { Profile, Group, ExpenseSplit, RecentExpense } from "@/types/dashboard";
 
 // ============================================
 // OPTIMIZED: Single data fetch, no Suspense overhead
 // Trade streaming for faster total load time
 // ============================================
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export default async function DashboardPage() {
     const supabase = await createClient();
@@ -52,16 +51,16 @@ export default async function DashboardPage() {
     ]);
 
     // Extract data
-    const profile = profileResult.data;
+    const profile = profileResult.data as Profile | null;
     const firstName = profile?.full_name?.split(" ")[0] || "there";
     const currency = profile?.currency || "USD";
 
-    const groups = (groupMembershipsResult.data || []).map((m: any) => m.groups);
+    const groups = (groupMembershipsResult.data || []).map((m) => m.groups as unknown as Group);
     const firstGroupId = groups[0]?.id;
     const groupCount = groups.length;
 
     // Calculate balances from combined expense splits query
-    const allSplits = expenseSplitsResult.data || [];
+    const allSplits = (expenseSplitsResult.data || []) as unknown as ExpenseSplit[];
     let totalOwed = 0;
     let totalOwe = 0;
     
@@ -79,7 +78,7 @@ export default async function DashboardPage() {
     }
     const netBalance = totalOwed - totalOwe;
 
-    const expenses = recentExpensesResult.data || [];
+    const expenses = (recentExpensesResult.data || []) as RecentExpense[];
 
     return (
         <div className="space-y-8">
@@ -183,7 +182,7 @@ export default async function DashboardPage() {
                         </CardContent></Card>
                     ) : (
                         <div className="grid gap-4">
-                            {groups.map((g: any) => (
+                            {groups.map((g) => (
                                 <Link key={g.id} href={`/groups/${encryptUrlId(g.id)}`}>
                                     <Card className="transition-all hover:shadow-md hover:border-teal-200 dark:hover:border-teal-800">
                                         <CardContent className="p-4">
@@ -239,4 +238,3 @@ export default async function DashboardPage() {
     );
 }
 
-/* eslint-enable @typescript-eslint/no-explicit-any */

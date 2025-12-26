@@ -49,7 +49,9 @@ const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
 // Helper to transform splits with participant info
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformSplits(splits: any[]): SplitWithParticipant[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (splits || []).map((s: any) => ({
         ...s,
         profile: s.profile || null,
@@ -120,6 +122,7 @@ export const expensesServerService = {
         }
 
         const total = count || 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = expenses.map((expense: any) => ({
             ...expense,
             paid_by_profile: expense.paid_by_profile as Profile | null,
@@ -196,6 +199,7 @@ export const expensesServerService = {
         }
 
         const total = count || 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = expenses.map((expense: any) => ({
             ...expense,
             paid_by_profile: expense.paid_by_profile as Profile | null,

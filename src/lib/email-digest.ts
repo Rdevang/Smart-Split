@@ -371,7 +371,7 @@ export async function queueAllWeeklyDigests(): Promise<{
 
     let queued = 0;
     let skipped = 0;
-    let errors = 0;
+    const errors = 0;
 
     // Process in batches of 10 to avoid overwhelming the system
     const BATCH_SIZE = 10;
