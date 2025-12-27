@@ -241,7 +241,8 @@ export const expensesServerService = {
                     )
                 `)
                 .eq("is_settled", false)
-                .neq("user_id", userId),
+                .neq("user_id", userId)
+                .eq("expense.paid_by", userId),
 
             // Total user owes others
             supabase
@@ -253,7 +254,8 @@ export const expensesServerService = {
                     )
                 `)
                 .eq("user_id", userId)
-                .eq("is_settled", false),
+                .eq("is_settled", false)
+                .neq("expense.paid_by", userId),
         ]);
 
         const totalExpenses = (paidResult.data || [])
