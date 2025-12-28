@@ -111,31 +111,31 @@ export default async function AdminDashboardPage() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
                     Dashboard
                 </h1>
-                <p className="text-gray-500 dark:text-gray-400">
+                <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
                     Overview of your application
                 </p>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
                 {stats.map((stat) => (
                     <Link key={stat.label} href={stat.href}>
-                        <Card className="transition-shadow hover:shadow-md">
-                            <CardContent className="p-6">
-                                <div className="flex items-center gap-4">
-                                    <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${stat.bg}`}>
-                                        <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                        <Card className="transition-shadow hover:shadow-md h-full">
+                            <CardContent className="p-4 sm:p-6">
+                                <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-center sm:text-left">
+                                    <div className={`flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-lg ${stat.bg}`}>
+                                        <stat.icon className={`h-5 w-5 sm:h-6 sm:w-6 ${stat.color}`} />
                                     </div>
                                     <div>
-                                        <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        <p className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
                                             {stat.value}
                                         </p>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                                             {stat.label}
                                         </p>
                                     </div>
@@ -147,29 +147,29 @@ export default async function AdminDashboardPage() {
             </div>
 
             {/* Recent Activity */}
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-3 sm:gap-6 lg:grid-cols-2">
                 {/* Recent Feedback */}
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle className="text-lg">Recent Feedback</CardTitle>
-                        <Link href="/admin/feedback" className="text-sm text-teal-600 hover:underline dark:text-teal-400">
+                <Card className="overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between px-4 py-4 sm:p-6">
+                        <CardTitle className="text-base sm:text-lg">Recent Feedback</CardTitle>
+                        <Link href="/admin/feedback" className="text-xs sm:text-sm text-teal-600 hover:underline dark:text-teal-400">
                             View all
                         </Link>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="px-4 pb-4 sm:p-6 sm:pt-0">
                         {recentFeedback && recentFeedback.length > 0 ? (
-                            <div className="space-y-3">
+                            <div className="space-y-2 sm:space-y-3">
                                 {recentFeedback.map((feedback) => (
-                                    <div key={feedback.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                                    <div key={feedback.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-2.5 sm:p-3 dark:border-gray-700">
                                         <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                                            <p className="truncate text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
                                                 {feedback.title}
                                             </p>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
                                                 {feedback.type.replace("_", " ")}
                                             </p>
                                         </div>
-                                        <span className={`ml-2 rounded-full px-2 py-1 text-xs font-medium ${statusColors[feedback.status] || statusColors.submitted}`}>
+                                        <span className={`ml-2 shrink-0 rounded-full px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium ${statusColors[feedback.status] || statusColors.submitted}`}>
                                             {feedback.status.replace("_", " ")}
                                         </span>
                                     </div>
@@ -184,26 +184,26 @@ export default async function AdminDashboardPage() {
                 </Card>
 
                 {/* Recent Users */}
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle className="text-lg">Recent Users</CardTitle>
-                        <Link href="/admin/users" className="text-sm text-teal-600 hover:underline dark:text-teal-400">
+                <Card className="overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between px-4 py-4 sm:p-6">
+                        <CardTitle className="text-base sm:text-lg">Recent Users</CardTitle>
+                        <Link href="/admin/users" className="text-xs sm:text-sm text-teal-600 hover:underline dark:text-teal-400">
                             View all
                         </Link>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="px-4 pb-4 sm:p-6 sm:pt-0">
                         {recentUsers && recentUsers.length > 0 ? (
-                            <div className="space-y-3">
+                            <div className="space-y-2 sm:space-y-3">
                                 {recentUsers.map((user) => (
-                                    <div key={user.id} className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 text-sm font-medium text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
+                                    <div key={user.id} className="flex items-center gap-2.5 sm:gap-3 rounded-lg border border-gray-200 p-2.5 sm:p-3 dark:border-gray-700">
+                                        <div className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full bg-teal-100 text-xs sm:text-sm font-medium text-teal-700 dark:bg-teal-900/30 dark:text-teal-400">
                                             {user.full_name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || "?"}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                                            <p className="truncate text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
                                                 {user.full_name || "No name"}
                                             </p>
-                                            <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                            <p className="truncate text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
                                                 {user.email}
                                             </p>
                                         </div>

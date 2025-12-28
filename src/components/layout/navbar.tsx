@@ -144,7 +144,7 @@ export function Navbar({ user }: NavbarProps) {
                         {/* Mobile menu button */}
                         <button
                             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                            className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 md:hidden dark:text-gray-400 dark:hover:bg-gray-800"
+                            className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 md:hidden dark:text-gray-400 dark:hover:bg-gray-800 dark:focus:ring-offset-gray-950"
                         >
                             {isMobileMenuOpen ? (
                                 <X className="h-5 w-5" />
@@ -305,11 +305,21 @@ export function Navbar({ user }: NavbarProps) {
                         aria-hidden="true"
                     />
 
-                    {/* Slide-in Menu from Left */}
+                    {/* Slide-in Menu from Left - Full height with top padding for header */}
                     <div
                         ref={mobileMenuRef}
-                        className="fixed top-16 left-0 z-[70] h-[calc(100vh-4rem)] w-72 border-r border-gray-200 bg-white p-4 shadow-2xl md:hidden dark:border-gray-800 dark:bg-gray-950"
+                        className="fixed inset-y-0 left-0 z-[70] w-72 overflow-y-auto border-r border-gray-200 bg-white pt-4 px-4 pb-4 shadow-2xl md:hidden dark:border-gray-800 dark:bg-gray-950"
                     >
+                        {/* Logo in sidebar */}
+                        <div className="flex items-center gap-2 mb-6 px-2">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 shadow-lg shadow-teal-500/25">
+                                <Wallet className="h-5 w-5 text-white" />
+                            </div>
+                            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+                                Smart<span className="text-teal-600">Split</span>
+                            </span>
+                        </div>
+
                         <nav className="flex flex-col gap-1">
                             {navLinks.map((link) => {
                                 const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);

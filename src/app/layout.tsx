@@ -14,16 +14,15 @@ const GTM_ID = "GTM-NB5TCMVX";
 const plusJakarta = Plus_Jakarta_Sans({
   variable: "--font-heading",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  display: "swap", // Show fallback font immediately, swap when loaded
-  preload: true,
+  weight: ["600", "700"], // Only weights used for headings
+  display: "swap",
 });
 
 const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],
+  weight: ["400", "500", "600"], // Only weights used for body text
   display: "swap",
-  preload: true,
 });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://smart-split-one.vercel.app";
