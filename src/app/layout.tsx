@@ -171,5 +171,7 @@ export default function RootLayout({
         <SpeedInsights />
       </body>
     </html>
+
+    
   );
 }
