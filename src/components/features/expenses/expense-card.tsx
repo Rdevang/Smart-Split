@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import Image from "next/image";
 import {
     Utensils, Car, Film, Zap, Home, ShoppingBag, Plane,
@@ -119,7 +119,7 @@ function getSplitDisplayInfo(split: Split, currentUserId: string) {
     return { name, avatarUrl, isPlaceholder, isCurrentUser };
 }
 
-export function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete }: ExpenseCardProps) {
+export const ExpenseCard = memo(function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete }: ExpenseCardProps) {
     const [showActions, setShowActions] = useState(false);
     const category = expense.category || "other";
     const paidByUser = expense.paid_by === currentUserId;
@@ -268,4 +268,4 @@ export function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete
             </CardContent>
         </Card>
     );
-}
+});
