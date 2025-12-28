@@ -158,6 +158,7 @@ export const CacheKeys = {
     // User-related (uses "users" version)
     userProfile: (userId: string) => versionedKey("users", `user:${userId}:profile`),
     userGroups: (userId: string) => versionedKey("users", `user:${userId}:groups`),
+    userFriends: (userId: string) => versionedKey("users", `user:${userId}:friends`),
 
     // Dashboard (uses "dashboard" version)
     userDashboard: (userId: string) => versionedKey("dashboard", `user:${userId}:dashboard`),
@@ -593,6 +594,7 @@ export async function invalidateUserCache(userId: string): Promise<void> {
     const keysToInvalidate = [
         CacheKeys.userDashboard(userId),
         CacheKeys.userGroups(userId),
+        CacheKeys.userFriends(userId),
         // User expenses cache (used by cached service)
         versionedKey("expenses", `user:${userId}:expenses:page1`),
         versionedKey("dashboard", `user:${userId}:recent_expenses:5`),

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { friendsServerService } from "@/services/friends.server";
+import { friendsCachedServerService } from "@/services/friends.cached.server";
 import { FriendsList } from "@/components/features/friends/friends-list";
 
 export default async function FriendsPage() {
@@ -15,7 +15,7 @@ export default async function FriendsPage() {
     const user = session.user;
 
     // Pre-fetch data server-side - no client waterfall
-    const members = await friendsServerService.getPastGroupMembers(user.id);
+    const members = await friendsCachedServerService.getPastGroupMembers(user.id);
 
     return (
         <div className="space-y-6">
