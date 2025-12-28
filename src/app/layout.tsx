@@ -1,3 +1,7 @@
+/**
+ * Root Layout - Smart Split Application
+ * Handles global fonts, metadata, analytics, and providers
+ */
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import Script from "next/script";
