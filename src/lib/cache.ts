@@ -2,6 +2,26 @@ import { getRedis, recordFailure, recordSuccess, REDIS_TIMEOUT_MS } from "./redi
 import { compressIfNeeded, decompressIfNeeded, COMPRESSION_THRESHOLD } from "./compression";
 
 // ============================================
+// REQUEST COALESCING (Prevents Cache Stampede)
+// ============================================
+// When multiple concurrent requests hit a cache miss:
+// - WITHOUT coalescing: ALL requests hit the DB (stampede!)
+// - WITH coalescing: ONE request hits DB, others wait for result
+//
+// This uses TWO levels of coalescing:
+// 1. In-memory Map - coalesces requests within same Node.js instance
+// 2. Redis lock - coalesces requests across distributed instances
+
+/** In-flight requests map (same instance coalescing) */
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
+/** Max time to wait for another instance to populate cache (ms) */
+const COALESCE_WAIT_MS = 2000;
+
+/** Poll interval when waiting for cache to be populated (ms) */
+const COALESCE_POLL_MS = 50;
+
+// ============================================
 // PERFORMANCE: Timeout wrapper for Redis ops
 // ============================================
 // Prevents Redis from becoming a bottleneck when slow/unreachable
@@ -366,6 +386,183 @@ export async function cached<T>(
         console.error(`Cache error for ${key}:`, error);
         return fetcher();
     }
+}
+
+/**
+ * Cache wrapper WITH REQUEST COALESCING
+ * 
+ * Prevents cache stampede by ensuring only ONE request fetches from DB
+ * when multiple concurrent requests hit a cache miss.
+ * 
+ * Flow:
+ * 1. Check cache → return if hit
+ * 2. Check in-memory in-flight map → wait if another request is fetching
+ * 3. Try to acquire Redis lock → if fail, poll cache until populated
+ * 4. Fetch from DB, store in cache, release lock
+ * 5. All waiting requests get the same result
+ * 
+ * Use this for:
+ * - Expensive DB queries (analytics, aggregations)
+ * - High-traffic endpoints (dashboard, group details)
+ * - Cold start scenarios (deploy, cache flush)
+ * 
+ * @param key - Cache key
+ * @param fetcher - Function to fetch data if cache miss
+ * @param ttl - Time to live in seconds
+ */
+export async function cachedCoalesced<T>(
+    key: string,
+    fetcher: () => Promise<T>,
+    ttl: number = CacheTTL.MEDIUM
+): Promise<T> {
+    const redis = getRedis();
+
+    // If Redis not available, just fetch (no coalescing possible)
+    if (!redis) {
+        return fetcher();
+    }
+
+    const vKey = autoVersionKey(key);
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 1: Check cache first
+    // ─────────────────────────────────────────────────────────────
+    try {
+        const rawEntry = await withTimeout(
+            redis.get<CacheEntry<T> | CompressedCacheEntry>(vKey),
+            REDIS_TIMEOUT_MS,
+            null
+        );
+
+        recordSuccess();
+
+        if (rawEntry !== null && rawEntry.data !== undefined) {
+            const cachedEntry = deserializeCacheEntry<T>(rawEntry);
+
+            if (cachedEntry.isNull || cachedEntry.data === NULL_SENTINEL) {
+                return null as T;
+            }
+
+            const age = (Date.now() - cachedEntry.timestamp) / 1000;
+            const staleThreshold = ttl * STALE_RATIO;
+
+            if (age < staleThreshold) {
+                return cachedEntry.data as T;
+            }
+
+            // Stale - refresh in background, return stale data
+            refreshInBackground(vKey, fetcher, ttl, redis);
+            return cachedEntry.data as T;
+        }
+    } catch {
+        recordFailure();
+        // Continue to fetch from DB
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 2: Check in-memory in-flight requests (same instance)
+    // ─────────────────────────────────────────────────────────────
+    const existingRequest = inFlightRequests.get(vKey);
+    if (existingRequest) {
+        // Another request in this instance is already fetching - wait for it
+        return existingRequest as Promise<T>;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 3: Try to acquire Redis lock (cross-instance coalescing)
+    // ─────────────────────────────────────────────────────────────
+    const lockKey = `coalesce:${vKey}`;
+    const lockId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    let acquired = false;
+    try {
+        const result = await redis.set(lockKey, lockId, { nx: true, ex: 30 });
+        acquired = result === "OK";
+    } catch {
+        // Redis error - proceed without coalescing
+        acquired = true;
+    }
+
+    if (!acquired) {
+        // ─────────────────────────────────────────────────────────
+        // STEP 3b: Another instance is fetching - poll cache
+        // ─────────────────────────────────────────────────────────
+        const startWait = Date.now();
+
+        while (Date.now() - startWait < COALESCE_WAIT_MS) {
+            await sleep(COALESCE_POLL_MS);
+
+            try {
+                const rawEntry = await redis.get<CacheEntry<T> | CompressedCacheEntry>(vKey);
+
+                if (rawEntry !== null && rawEntry.data !== undefined) {
+                    const cachedEntry = deserializeCacheEntry<T>(rawEntry);
+
+                    if (cachedEntry.isNull || cachedEntry.data === NULL_SENTINEL) {
+                        return null as T;
+                    }
+
+                    return cachedEntry.data as T;
+                }
+            } catch {
+                // Continue polling
+            }
+        }
+
+        // Timeout waiting - fetch ourselves (fallback)
+        console.warn(`[Cache] Coalesce timeout for ${key}, fetching directly`);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 4: We have the lock (or fallback) - fetch and cache
+    // ─────────────────────────────────────────────────────────────
+    const fetchPromise = (async (): Promise<T> => {
+        try {
+            const freshData = await fetcher();
+
+            // Store in cache
+            const isNullResult = freshData === null ||
+                freshData === undefined ||
+                (Array.isArray(freshData) && freshData.length === 0);
+
+            if (isNullResult) {
+                const nullEntry: CacheEntry<T> = {
+                    data: NULL_SENTINEL as T,
+                    timestamp: Date.now(),
+                    isNull: true,
+                };
+                await redis.set(vKey, nullEntry, { ex: CacheTTL.NULL_RESULT });
+            } else {
+                const entry: CacheEntry<T> = {
+                    data: freshData,
+                    timestamp: Date.now(),
+                };
+                const serializedEntry = serializeCacheEntry(entry);
+                const jitteredTTL = addJitter(ttl);
+                await redis.set(vKey, serializedEntry, { ex: jitteredTTL });
+            }
+
+            return freshData;
+        } finally {
+            // Cleanup
+            inFlightRequests.delete(vKey);
+
+            // Release lock (only if we acquired it)
+            if (acquired) {
+                redis.del(lockKey).catch(() => { });
+            }
+        }
+    })();
+
+    // Register in-flight request for same-instance coalescing
+    inFlightRequests.set(vKey, fetchPromise);
+
+    return fetchPromise;
+}
+
+/** Helper: sleep for ms milliseconds */
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**

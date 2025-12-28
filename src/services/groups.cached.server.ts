@@ -9,12 +9,13 @@
  * dynamic functions like cookies() which Supabase server client requires.
  */
 
-import { cached, CacheKeys, CacheTTL, invalidateGroupCache, invalidateUserCache } from "@/lib/cache";
+import { cached, cachedCoalesced, CacheKeys, CacheTTL, invalidateGroupCache, invalidateUserCache } from "@/lib/cache";
 import { groupsServerService, type GroupWithMembers, type GroupBalance, type PaginatedResult, type PaginationParams } from "./groups.server";
 
 export const groupsCachedServerService = {
     /**
      * Get groups for a user (cached for 5 minutes)
+     * Uses REQUEST COALESCING - high traffic endpoint
      * Cache key: user:{userId}:groups
      */
     async getGroups(
@@ -26,7 +27,7 @@ export const groupsCachedServerService = {
             return groupsServerService.getGroups(userId, params);
         }
 
-        return cached(
+        return cachedCoalesced(
             CacheKeys.userGroups(userId),
             () => groupsServerService.getGroups(userId, params),
             CacheTTL.MEDIUM // 5 minutes
@@ -35,10 +36,11 @@ export const groupsCachedServerService = {
 
     /**
      * Get single group with members (cached for 5 minutes)
+     * Uses REQUEST COALESCING - high traffic endpoint
      * Cache key: group:{groupId}:details
      */
     async getGroup(groupId: string): Promise<GroupWithMembers | null> {
-        return cached(
+        return cachedCoalesced(
             CacheKeys.groupDetails(groupId),
             () => groupsServerService.getGroup(groupId),
             CacheTTL.MEDIUM // 5 minutes
@@ -48,10 +50,11 @@ export const groupsCachedServerService = {
     /**
      * Get group balances (cached for 15 minutes - expensive computation)
      * This is the MOST expensive query - calls get_group_balances RPC
+     * Uses REQUEST COALESCING - prevents DB stampede on cold start
      * Cache key: group:{groupId}:balances
      */
     async getGroupBalances(groupId: string): Promise<GroupBalance[]> {
-        return cached(
+        return cachedCoalesced(
             CacheKeys.groupBalances(groupId),
             () => groupsServerService.getGroupBalances(groupId),
             CacheTTL.LONG // 15 minutes - balances are expensive to compute

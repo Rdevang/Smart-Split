@@ -9,7 +9,7 @@
  * dynamic functions like cookies() which Supabase server client requires.
  */
 
-import { cached, CacheKeys, CacheTTL } from "@/lib/cache";
+import { cached, cachedCoalesced, CacheKeys, CacheTTL } from "@/lib/cache";
 import {
     expensesServerService,
     type ExpenseWithDetails,
@@ -21,6 +21,7 @@ import {
 export const expensesCachedServerService = {
     /**
      * Get expenses for a group (cached for 5 minutes)
+     * Uses REQUEST COALESCING - high traffic endpoint
      * Only caches first page - pagination variants too numerous to cache
      */
     async getExpenses(
@@ -33,7 +34,7 @@ export const expensesCachedServerService = {
         }
 
         const cacheKey = `group:${groupId}:expenses:page1`;
-        return cached(
+        return cachedCoalesced(
             cacheKey,
             () => expensesServerService.getExpenses(groupId, params),
             CacheTTL.MEDIUM // 5 minutes
@@ -61,11 +62,12 @@ export const expensesCachedServerService = {
 
     /**
      * Get user expense summary (cached for 5 minutes)
+     * Uses REQUEST COALESCING - dashboard aggregate, high traffic
      * This aggregates across all groups - moderately expensive
      */
     async getUserExpenseSummary(userId: string): Promise<ExpenseSummary> {
         const cacheKey = CacheKeys.userDashboard(userId);
-        return cached(
+        return cachedCoalesced(
             cacheKey,
             () => expensesServerService.getUserExpenseSummary(userId),
             CacheTTL.MEDIUM // 5 minutes
