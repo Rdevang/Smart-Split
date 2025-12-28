@@ -11,7 +11,8 @@ interface NavigationProgressContextType {
     isNavigating: boolean;
 }
 
-const NavigationProgressContext = createContext<NavigationProgressContextType | null>(null);
+// Export context for direct access (graceful fallback in Link component)
+export const NavigationProgressContext = createContext<NavigationProgressContextType | null>(null);
 
 export function useNavigationProgress() {
     const context = useContext(NavigationProgressContext);
