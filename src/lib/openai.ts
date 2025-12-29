@@ -1,11 +1,21 @@
 import OpenAI from "openai";
 
+// Check for API key
+if (!process.env.OPENAI_API_KEY) {
+    console.warn("[OpenAI] OPENAI_API_KEY is not set. AI features will not work.");
+}
+
 // Initialize OpenAI client
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey: process.env.OPENAI_API_KEY || "missing-key",
 });
 
 export { openai };
+
+// Helper to check if OpenAI is configured
+export function isOpenAIConfigured(): boolean {
+    return !!process.env.OPENAI_API_KEY;
+}
 
 // Types for AI-parsed expense
 export interface ParsedExpense {

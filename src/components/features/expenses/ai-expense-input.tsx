@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Sparkles, Mic, MicOff, Camera, Loader2, X, Wand2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Sparkles, Mic, MicOff, Camera, Loader2, X, Wand2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import type { ParsedExpense, ReceiptData } from "@/lib/openai";
+import type { ParsedExpense, ReceiptData } from "@/lib/ai-client";
+
+interface AIUsage {
+    used: number;
+    limit: number;
+    remaining: number;
+    allowed: boolean;
+    resetAt: string;
+}
 
 interface AIExpenseInputProps {
     groupId: string;
@@ -24,8 +32,60 @@ export function AIExpenseInput({
     const [text, setText] = useState("");
     const [isProcessing, setIsProcessing] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const [usage, setUsage] = useState<AIUsage | null>(null);
+    const [loadingUsage, setLoadingUsage] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+
+    // Check AI usage on mount
+    useEffect(() => {
+        async function checkUsage() {
+            try {
+                const response = await fetch("/api/ai/parse-expense?action=check-usage");
+                if (response.ok) {
+                    const data = await response.json();
+                    setUsage(data.usage);
+                }
+            } catch (error) {
+                console.error("Failed to check AI usage:", error);
+            } finally {
+                setLoadingUsage(false);
+            }
+        }
+        checkUsage();
+    }, []);
+
+    // Calculate hours until reset
+    const getHoursUntilReset = () => {
+        if (!usage?.resetAt) return 24;
+        const resetTime = new Date(usage.resetAt).getTime();
+        const now = Date.now();
+        return Math.ceil((resetTime - now) / (1000 * 60 * 60));
+    };
+
+    // If limit reached, show message
+    if (!loadingUsage && usage && !usage.allowed) {
+        return (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-900 dark:bg-amber-900/20">
+                <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50">
+                        <Clock className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-100">
+                            Daily Limit Reached
+                        </h3>
+                        <p className="mt-1 text-amber-700 dark:text-amber-300">
+                            You&apos;ve used your {usage.limit} AI request{usage.limit > 1 ? "s" : ""} for today.
+                        </p>
+                        <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+                            Try again in {getHoursUntilReset()} hours, or add the expense manually below.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     // Voice input using Web Speech API
     const toggleVoiceInput = () => {
@@ -95,24 +155,43 @@ export function AIExpenseInput({
                 body: JSON.stringify({ text, groupId }),
             });
 
-            if (!response.ok) {
-                throw new Error("Failed to parse expense");
+            const data = await response.json();
+
+            // Handle rate limit
+            if (response.status === 429) {
+                toast({
+                    title: "Daily Limit Reached",
+                    message: data.error || "You've used your daily AI request. Try again tomorrow!",
+                    variant: "warning",
+                });
+                return;
             }
 
-            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to parse expense");
+            }
+
             onExpenseParsed(data.expense);
             setText("");
 
+            // Update usage state
+            if (data.usage) {
+                setUsage(data.usage);
+            }
+
+            // Show success with remaining usage
+            const remaining = data.usage?.remaining ?? 0;
             toast({
                 title: "Expense parsed!",
-                message: `${data.expense.description} - ₹${data.expense.amount}`,
+                message: `${data.expense.description} - ₹${data.expense.amount}${remaining === 0 ? " (No AI requests left today)" : ""}`,
                 variant: "success",
             });
         } catch (error) {
             console.error("Parse error:", error);
+            const errorMessage = error instanceof Error ? error.message : "Failed to parse expense";
             toast({
                 title: "Error",
-                message: "Failed to parse expense. Please try again.",
+                message: errorMessage,
                 variant: "error",
             });
         } finally {

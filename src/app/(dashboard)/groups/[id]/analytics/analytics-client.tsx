@@ -17,6 +17,7 @@ import {
     SpendByMemberChart,
     TopExpensesList,
 } from "@/components/features/groups/analytics-charts";
+import { ExportGroup } from "@/components/features/groups/export-group";
 
 interface Split {
     id: string;
@@ -268,61 +269,70 @@ export function AnalyticsClient({
     }
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-6 sm:space-y-8">
             {/* Hero Section with Key Stats */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 p-8 text-white">
-                {/* Animated background shapes */}
+            <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-slate-800 via-slate-900 to-gray-900 p-4 sm:p-6 md:p-8 text-white">
+                {/* Subtle background shapes */}
                 <div className="absolute inset-0 overflow-hidden">
-                    <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-white/10 to-transparent rounded-full blur-3xl" />
-                    <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-black/20 to-transparent rounded-full blur-3xl" />
+                    <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-teal-500/10 to-transparent rounded-full blur-3xl" />
+                    <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-teal-600/5 to-transparent rounded-full blur-3xl" />
                 </div>
 
                 <div className="relative">
                     {/* Header */}
-                    <div className="flex items-start justify-between mb-8">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6 sm:mb-8">
                         <div>
-                            <div className="flex items-center gap-2 text-violet-200 mb-2">
+                            <div className="flex items-center gap-2 text-teal-400 mb-2">
                                 <Sparkles className="h-4 w-4" />
                                 <span className="text-sm font-medium">Expense Analytics</span>
                             </div>
-                            <h1 className="text-4xl font-bold tracking-tight">{group.name}</h1>
+                            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">{group.name}</h1>
                         </div>
 
-                        {/* Time Filter Pills */}
-                        <div className="flex gap-1 bg-white/10 backdrop-blur-sm rounded-full p-1">
-                            {(["week", "month", "all"] as TimeFilter[]).map((filter) => (
-                                <button
-                                    key={filter}
-                                    onClick={() => setTimeFilter(filter)}
-                                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                                        timeFilter === filter
-                                            ? "bg-white text-violet-700 shadow-lg"
-                                            : "text-white/70 hover:text-white hover:bg-white/10"
-                                    }`}
-                                >
-                                    {filter === "all" ? "All Time" : filter === "month" ? "30 Days" : "7 Days"}
-                                </button>
-                            ))}
+                        {/* Time Filter Pills + Export */}
+                        <div className="flex items-center gap-2 self-start">
+                            <div className="flex gap-1 bg-white/5 backdrop-blur-sm rounded-full p-1">
+                                {(["week", "month", "all"] as TimeFilter[]).map((filter) => (
+                                    <button
+                                        key={filter}
+                                        onClick={() => setTimeFilter(filter)}
+                                        className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all ${
+                                            timeFilter === filter
+                                                ? "bg-teal-500 text-white shadow-lg"
+                                                : "text-gray-400 hover:text-white hover:bg-white/10"
+                                        }`}
+                                    >
+                                        {filter === "all" ? "All Time" : filter === "month" ? "30 Days" : "7 Days"}
+                                    </button>
+                                ))}
+                            </div>
+                            <ExportGroup
+                                groupName={group.name}
+                                expenses={filteredExpenses}
+                                balances={balances}
+                                currency={currency}
+                                totalSpent={insights.total}
+                            />
                         </div>
                     </div>
 
                     {/* Big Number */}
-                    <div className="mb-8">
-                        <p className="text-violet-200 text-sm mb-1">Total Spent</p>
-                        <div className="flex items-baseline gap-3">
-                            <span className="text-6xl font-bold tracking-tight">
+                    <div className="mb-6 sm:mb-8">
+                        <p className="text-gray-400 text-sm mb-1">Total Spent</p>
+                        <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 sm:gap-3">
+                            <span className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white">
                                 {formatCurrency(insights.total, currency)}
                             </span>
                             {insights.monthlyChange !== 0 && timeFilter === "all" && (
-                                <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${
+                                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs sm:text-sm font-medium self-start ${
                                     insights.monthlyChange > 0 
-                                        ? "bg-rose-500/20 text-rose-200" 
-                                        : "bg-emerald-500/20 text-emerald-200"
+                                        ? "bg-rose-500/20 text-rose-300" 
+                                        : "bg-emerald-500/20 text-emerald-300"
                                 }`}>
                                     {insights.monthlyChange > 0 ? (
-                                        <TrendingUp className="h-4 w-4" />
+                                        <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4" />
                                     ) : (
-                                        <TrendingDown className="h-4 w-4" />
+                                        <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4" />
                                     )}
                                     {Math.abs(insights.monthlyChange).toFixed(0)}% vs last month
                                 </div>
@@ -331,26 +341,26 @@ export function AnalyticsClient({
                     </div>
 
                     {/* Quick Stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4">
-                            <Receipt className="h-5 w-5 text-violet-200 mb-2" />
-                            <p className="text-2xl font-bold">{insights.count}</p>
-                            <p className="text-violet-200 text-sm">Expenses</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                        <div className="bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4">
+                            <Receipt className="h-4 w-4 sm:h-5 sm:w-5 text-teal-400 mb-2" />
+                            <p className="text-xl sm:text-2xl font-bold">{insights.count}</p>
+                            <p className="text-gray-400 text-xs sm:text-sm">Expenses</p>
                         </div>
-                        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4">
-                            <Target className="h-5 w-5 text-violet-200 mb-2" />
-                            <p className="text-2xl font-bold">{formatCurrency(insights.avg, currency)}</p>
-                            <p className="text-violet-200 text-sm">Average</p>
+                        <div className="bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4">
+                            <Target className="h-4 w-4 sm:h-5 sm:w-5 text-teal-400 mb-2" />
+                            <p className="text-xl sm:text-2xl font-bold">{formatCurrency(insights.avg, currency)}</p>
+                            <p className="text-gray-400 text-xs sm:text-sm">Average</p>
                         </div>
-                        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4">
-                            <Users className="h-5 w-5 text-violet-200 mb-2" />
-                            <p className="text-2xl font-bold">{(group.members || []).length}</p>
-                            <p className="text-violet-200 text-sm">Members</p>
+                        <div className="bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4">
+                            <Users className="h-4 w-4 sm:h-5 sm:w-5 text-teal-400 mb-2" />
+                            <p className="text-xl sm:text-2xl font-bold">{(group.members || []).length}</p>
+                            <p className="text-gray-400 text-xs sm:text-sm">Members</p>
                         </div>
-                        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4">
-                            <Calendar className="h-5 w-5 text-violet-200 mb-2" />
-                            <p className="text-2xl font-bold">{insights.categoryCount}</p>
-                            <p className="text-violet-200 text-sm">Categories</p>
+                        <div className="bg-white/5 backdrop-blur-sm rounded-xl sm:rounded-2xl p-3 sm:p-4">
+                            <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-teal-400 mb-2" />
+                            <p className="text-xl sm:text-2xl font-bold">{insights.categoryCount}</p>
+                            <p className="text-gray-400 text-xs sm:text-sm">Categories</p>
                         </div>
                     </div>
                 </div>

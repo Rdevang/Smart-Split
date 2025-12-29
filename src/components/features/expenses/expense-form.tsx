@@ -19,7 +19,7 @@ import { expensesService } from "@/services/expenses";
 import { onExpenseMutation } from "@/app/(dashboard)/actions";
 import { getEncryptedGroupUrl } from "@/app/(dashboard)/actions";
 import type { Database } from "@/types/database";
-import type { ParsedExpense } from "@/lib/openai";
+import type { ParsedExpense } from "@/lib/ai-client";
 import { cn } from "@/lib/utils";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];

@@ -559,6 +559,7 @@ export function SpendByMemberChart({ expenses, currency, currentUserId }: SpendB
                         width={60}
                     />
                     <Tooltip
+                        cursor={{ fill: "transparent" }}
                         content={({ active, payload }) => {
                             if (active && payload && payload.length) {
                                 const data = payload[0].payload;
@@ -657,6 +658,7 @@ export function BalancesChart({ balances, currency, currentUserId }: BalancesCha
                         domain={[-maxAbsBalance * 1.1, maxAbsBalance * 1.1]}
                     />
                     <Tooltip
+                        cursor={{ fill: "transparent" }}
                         content={({ active, payload }) => {
                             if (active && payload && payload.length) {
                                 const value = payload[0].value as number;
