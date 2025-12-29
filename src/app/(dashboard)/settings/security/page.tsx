@@ -29,6 +29,15 @@ export default function SecurityPage() {
     const handlePasswordChange = async (e: React.FormEvent) => {
         e.preventDefault();
         
+        if (!passwords.current) {
+            toast({
+                title: "Error",
+                message: "Please enter your current password",
+                variant: "error",
+            });
+            return;
+        }
+
         if (passwords.new !== passwords.confirm) {
             toast({
                 title: "Error",
@@ -51,7 +60,23 @@ export default function SecurityPage() {
         try {
             const supabase = createClient();
             
-            // Update password
+            // First, get the user's email
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user?.email) {
+                throw new Error("Unable to verify user");
+            }
+
+            // Re-authenticate with current password to verify identity
+            const { error: signInError } = await supabase.auth.signInWithPassword({
+                email: user.email,
+                password: passwords.current,
+            });
+
+            if (signInError) {
+                throw new Error("Current password is incorrect");
+            }
+
+            // Now update to new password
             const { error } = await supabase.auth.updateUser({
                 password: passwords.new,
             });
@@ -218,7 +243,7 @@ export default function SecurityPage() {
                         </p>
                         <Button
                             type="submit"
-                            disabled={changingPassword || !passwords.new || !passwords.confirm}
+                            disabled={changingPassword || !passwords.current || !passwords.new || !passwords.confirm}
                         >
                             {changingPassword ? (
                                 <>
