@@ -14,8 +14,11 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { userId, preferences } = body;
 
+        // Use authenticated user's ID if "current" is passed
+        const targetUserId = userId === "current" ? user.id : userId;
+
         // Verify user can only update their own preferences
-        if (userId !== user.id) {
+        if (targetUserId !== user.id) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
         const { error: updateError } = await supabase
             .from("profiles")
             .update({ email_preferences: sanitizedPreferences })
-            .eq("id", userId);
+            .eq("id", targetUserId);
 
         if (updateError) {
             console.error("[EmailPreferences] Update failed:", updateError);
