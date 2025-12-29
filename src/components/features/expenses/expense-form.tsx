@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
+import { Sparkles, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,10 +14,13 @@ import { Select } from "@/components/ui/select";
 import { LocationInput, type LocationData } from "@/components/ui/location-input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import { AIExpenseInput } from "@/components/features/expenses/ai-expense-input";
 import { expensesService } from "@/services/expenses";
 import { onExpenseMutation } from "@/app/(dashboard)/actions";
 import { getEncryptedGroupUrl } from "@/app/(dashboard)/actions";
 import type { Database } from "@/types/database";
+import type { ParsedExpense } from "@/lib/openai";
+import { cn } from "@/lib/utils";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
 type SplitType = Database["public"]["Enums"]["split_type"];
@@ -110,6 +114,7 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
     );
     const [customSplits, setCustomSplits] = useState<Record<string, number>>({});
     const [location, setLocation] = useState<LocationData | undefined>();
+    const [inputMode, setInputMode] = useState<"ai" | "manual">("ai"); // Default to AI mode
 
     const {
         register,
@@ -129,6 +134,21 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
             notes: "",
         },
     });
+
+    // Handle AI-parsed expense
+    const handleAIParsedExpense = (parsed: ParsedExpense) => {
+        setValue("description", parsed.description);
+        setValue("amount", parsed.amount.toString());
+        setValue("category", parsed.category);
+        if (parsed.date) {
+            setValue("expense_date", parsed.date);
+        }
+        
+        // Switch to manual mode to let user review/edit
+        setInputMode("manual");
+        
+        toast.success("Expense parsed! Review and submit below.");
+    };
 
     const amount = watch("amount");
     const paidBy = watch("paid_by");
@@ -295,6 +315,52 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
                 </CardDescription>
             </CardHeader>
             <CardContent>
+                {/* Input Mode Toggle */}
+                <div className="mb-6 flex rounded-lg border border-gray-200 p-1 dark:border-gray-700">
+                    <button
+                        type="button"
+                        onClick={() => setInputMode("ai")}
+                        className={cn(
+                            "flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all",
+                            inputMode === "ai"
+                                ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-sm"
+                                : "text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
+                        )}
+                    >
+                        <Sparkles className="h-4 w-4" />
+                        AI Input
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setInputMode("manual")}
+                        className={cn(
+                            "flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all",
+                            inputMode === "manual"
+                                ? "bg-teal-600 text-white shadow-sm"
+                                : "text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800"
+                        )}
+                    >
+                        <PenLine className="h-4 w-4" />
+                        Manual
+                    </button>
+                </div>
+
+                {/* AI Input Mode */}
+                {inputMode === "ai" && (
+                    <div className="mb-6">
+                        <AIExpenseInput
+                            groupId={group.id}
+                            onExpenseParsed={handleAIParsedExpense}
+                            disabled={isLoading}
+                        />
+                        <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+                            <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                            <span>or fill manually below</span>
+                            <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                        </div>
+                    </div>
+                )}
+
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                     {error && (
                         <div className="rounded-lg bg-red-50 p-4 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
