@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import sanitizeHtmlLib from "sanitize-html";
 
 // ============================================
 // LENGTH LIMITS
@@ -77,7 +78,13 @@ export function sanitizeHtml(input: string): string {
  */
 export function stripHtml(input: string): string {
     if (!input || typeof input !== "string") return "";
-    return input.replace(/<[^>]*>/g, "");
+
+    // Use a robust HTML sanitizer to remove all tags and attributes,
+    // returning only the text content.
+    return sanitizeHtmlLib(input, {
+        allowedTags: [],
+        allowedAttributes: {},
+    });
 }
 
 /**
