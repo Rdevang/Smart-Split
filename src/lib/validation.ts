@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import sanitizeHtmlLib from "sanitize-html";
 
 // ============================================
 // LENGTH LIMITS
@@ -74,10 +75,16 @@ export function sanitizeHtml(input: string): string {
 /**
  * Strip all HTML tags from input
  * Use when HTML is not needed at all
+ * 
+ * Uses sanitize-html library instead of regex to:
+ * - Prevent ReDoS attacks (CWE-1333)
+ * - Handle malformed/nested tags correctly (CWE-20, CWE-80, CWE-116)
+ * - Properly strip dangerous content like <script>
  */
 export function stripHtml(input: string): string {
     if (!input || typeof input !== "string") return "";
-    return input.replace(/<[^>]*>/g, "");
+    // Use sanitize-html with no allowed tags/attributes = plain text output
+    return sanitizeHtmlLib(input, { allowedTags: [], allowedAttributes: {} });
 }
 
 /**
