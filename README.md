@@ -223,9 +223,6 @@ Remember to set environment variables in Vercel dashboard.
 
 Contributions are welcome! Please read our contributing guidelines before submitting PRs.
 
-## 📄 License
-
-This project is licensed under the MIT License.
 
 ## 👨‍💻 Author
 

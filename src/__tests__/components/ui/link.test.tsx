@@ -115,15 +115,13 @@ describe("Link", () => {
         expect(link).toHaveAttribute("rel", "noopener noreferrer");
     });
 
-    it("throws error when used outside NavigationProgressProvider", () => {
-        // Suppress console.error for this test
-        const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => { });
+    it("works without NavigationProgressProvider (graceful degradation)", () => {
+        // Link should work even without the provider (for admin pages, etc.)
+        render(<Link href="/test">Test</Link>);
 
-        expect(() => {
-            render(<Link href="/test">Test</Link>);
-        }).toThrow("useNavigationProgress must be used within NavigationProgressProvider");
-
-        consoleSpy.mockRestore();
+        const link = screen.getByRole("link", { name: "Test" });
+        expect(link).toBeInTheDocument();
+        expect(link).toHaveAttribute("href", "/test");
     });
 });
 

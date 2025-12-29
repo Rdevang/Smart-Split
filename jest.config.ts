@@ -9,6 +9,7 @@ const createJestConfig = nextJest({
 const config: Config = {
     displayName: "Smart Split",
     testEnvironment: "jsdom",
+    testTimeout: 10000, // 10 second timeout per test
     setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
     moduleNameMapper: {
         "^@/(.*)$": "<rootDir>/src/$1",
@@ -21,6 +22,8 @@ const config: Config = {
     transformIgnorePatterns: [
         "/node_modules/(?!(uncrypto|@upstash)/)",
     ],
+    // Use V8 coverage provider (compatible with Jest 30)
+    coverageProvider: "v8",
     collectCoverageFrom: [
         "src/**/*.{ts,tsx}",
         "!src/**/*.d.ts",
