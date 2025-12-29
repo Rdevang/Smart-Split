@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 
         const duration = Date.now() - startTime;
 
-        console.log(`[Cron/Digest] Complete in ${duration}ms:`, result);
+        console.log("[Cron/Digest] Complete in", duration, "ms:", result);
 
         return NextResponse.json({
             success: true,

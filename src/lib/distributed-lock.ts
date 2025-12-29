@@ -45,7 +45,7 @@ export async function acquireLock(
     // If Redis not available, allow operation (fail open)
     // Note: This means no lock protection without Redis
     if (!redis) {
-        console.warn(`⚠️ Redis not available, proceeding without lock for: ${key}`);
+        console.warn("⚠️ Redis not available, proceeding without lock for:", key);
         return { acquired: true, lockId: null };
     }
 
@@ -70,7 +70,7 @@ export async function acquireLock(
                 await sleep(opts.retryDelay);
             }
         } catch (error) {
-            console.error(`Lock acquisition error for ${key}:`, error);
+            console.error("[Lock] Acquisition error for:", key, error);
             // On error, fail open (allow operation)
             return { acquired: true, lockId: null };
         }
@@ -101,7 +101,7 @@ export async function releaseLock(key: string, lockId: string | null): Promise<v
             await redis.del(lockKey);
         }
     } catch (error) {
-        console.error(`Lock release error for ${key}:`, error);
+        console.error("[Lock] Release error for:", key, error);
         // Ignore release errors - lock will expire anyway
     }
 }

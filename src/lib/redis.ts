@@ -43,7 +43,7 @@ export function recordFailure(): void {
 
     if (circuitBreaker.failures >= FAILURE_THRESHOLD) {
         circuitBreaker.isOpen = true;
-        console.warn(`🔴 Redis circuit breaker OPEN after ${circuitBreaker.failures} failures. Bypassing cache for ${RECOVERY_TIME_MS / 1000}s`);
+        console.warn("🔴 Redis circuit breaker OPEN after", circuitBreaker.failures, "failures. Bypassing cache for", RECOVERY_TIME_MS / 1000, "s");
     }
 }
 

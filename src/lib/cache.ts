@@ -383,7 +383,7 @@ export async function cached<T>(
         recordFailure();
 
         // FAIL OPEN: On any Redis error, fall back to database
-        console.error(`Cache error for ${key}:`, error);
+        console.error("[Cache] Error for key:", key, error);
         return fetcher();
     }
 }
@@ -510,7 +510,7 @@ export async function cachedCoalesced<T>(
         }
 
         // Timeout waiting - fetch ourselves (fallback)
-        console.warn(`[Cache] Coalesce timeout for ${key}, fetching directly`);
+        console.warn("[Cache] Coalesce timeout, fetching directly for key:", key);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -640,7 +640,7 @@ function storeInCacheBackground<T>(
                 await redis.set(key, serializedEntry, { ex: jitteredTTL });
             }
         } catch (error) {
-            console.error(`Background cache store failed for ${key}:`, error);
+            console.error("[Cache] Background store failed for key:", key, error);
         }
     })();
 }
@@ -688,7 +688,7 @@ function refreshInBackground<T>(
                 await redis.set(key, serializedEntry, { ex: jitteredTTL });
             }
         } catch (error) {
-            console.error(`Background refresh failed for ${key}:`, error);
+            console.error("[Cache] Background refresh failed for key:", key, error);
         } finally {
             redis.del(refreshKey).catch(() => { });
         }
@@ -708,7 +708,7 @@ export async function invalidateCache(key: string): Promise<void> {
     try {
         await redis.del(vKey);
     } catch (error) {
-        console.error(`Failed to invalidate cache ${vKey}:`, error);
+        console.error("[Cache] Failed to invalidate key:", vKey, error);
     }
 }
 
@@ -738,7 +738,7 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
             await redis.del(...keysToDelete);
         }
     } catch (error) {
-        console.error(`Failed to invalidate cache pattern ${pattern}:`, error);
+        console.error("[Cache] Failed to invalidate pattern:", pattern, error);
     }
 }
 
@@ -749,7 +749,7 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
 export async function invalidateGroupCache(groupId: string): Promise<void> {
     const redis = getRedis();
     if (!redis) {
-        console.log(`[Cache] No Redis connection, skipping invalidation for group ${groupId}`);
+        console.log("[Cache] No Redis connection, skipping invalidation for group:", groupId);
         return;
     }
 
@@ -774,9 +774,9 @@ export async function invalidateGroupCache(groupId: string): Promise<void> {
 
     try {
         const result = await redis.del(...keysToInvalidate);
-        console.log(`[Cache] Invalidated ${result} keys for group ${groupId}`);
+        console.log("[Cache] Invalidated", result, "keys for group:", groupId);
     } catch (error) {
-        console.error(`Failed to invalidate group cache ${groupId}:`, error);
+        console.error("[Cache] Failed to invalidate group cache:", groupId, error);
     }
 }
 
@@ -801,7 +801,7 @@ export async function invalidateUserCache(userId: string): Promise<void> {
     try {
         await redis.del(...keysToInvalidate);
     } catch (error) {
-        console.error(`Failed to invalidate user cache ${userId}:`, error);
+        console.error("[Cache] Failed to invalidate user cache:", userId, error);
     }
 }
 

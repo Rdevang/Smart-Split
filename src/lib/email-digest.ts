@@ -307,13 +307,13 @@ export async function queueWeeklyDigestForUser(userId: string): Promise<boolean>
         const digestData = await generateUserDigest(userId);
 
         if (!digestData) {
-            console.log(`[Digest] No data for user ${userId}, skipping`);
+            console.log("[Digest] No data for user, skipping:", userId);
             return false;
         }
 
         // Skip if no activity (no balances and no expenses)
         if (digestData.totalOwed === 0 && digestData.totalOwing === 0 && digestData.expenseCount === 0) {
-            console.log(`[Digest] No activity for user ${userId}, skipping`);
+            console.log("[Digest] No activity for user, skipping:", userId);
             return false;
         }
 
@@ -343,7 +343,7 @@ export async function queueWeeklyDigestForUser(userId: string): Promise<boolean>
 
         return result.queued;
     } catch (error) {
-        console.error(`[Digest] Error for user ${userId}:`, error);
+        console.error("[Digest] Error for user:", userId, error);
         return false;
     }
 }
@@ -367,7 +367,7 @@ export async function queueAllWeeklyDigests(): Promise<{
         return { queued: 0, skipped: 0, errors: 1 };
     }
 
-    console.log(`[Digest] Processing ${users.length} users...`);
+    console.log("[Digest] Processing", users.length, "users...");
 
     let queued = 0;
     let skipped = 0;
@@ -393,7 +393,7 @@ export async function queueAllWeeklyDigests(): Promise<{
         }
     }
 
-    console.log(`[Digest] Complete. Queued: ${queued}, Skipped: ${skipped}, Errors: ${errors}`);
+    console.log("[Digest] Complete. Queued:", queued, "Skipped:", skipped, "Errors:", errors);
 
     return { queued, skipped, errors };
 }
