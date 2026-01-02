@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, Plus, Settings, Users, Receipt, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
+import { ArrowLeft, Plus, Settings, Users, Receipt, TrendingUp, TrendingDown, BarChart3, ListPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,6 +98,12 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         <Button>
                             <Plus className="mr-2 h-4 w-4" />
                             Add Expense
+                        </Button>
+                    </Link>
+                    <Link href={`/groups/${encryptUrlId(id)}/expenses/bulk`}>
+                        <Button variant="outline">
+                            <ListPlus className="mr-2 h-4 w-4" />
+                            Bulk Add
                         </Button>
                     </Link>
                     {expenses.length > 0 && (

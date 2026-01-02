@@ -165,6 +165,49 @@ export interface CreateExpenseInput {
     }[];
 }
 
+export interface BulkExpenseInput {
+    description: string;
+    amount: number;
+    paid_by?: string;
+    paid_by_placeholder_id?: string;
+    category?: ExpenseCategory;
+    expense_date?: string;
+    notes?: string;
+}
+
+export interface CreateBulkExpensesInput {
+    group_id: string;
+    split_type: SplitType;
+    /** Members to split among - applies to all expenses */
+    split_among: {
+        user_id?: string;
+        placeholder_id?: string;
+    }[];
+    expenses: BulkExpenseInput[];
+}
+
+/** V2: Each expense has its own split_among array */
+export interface BulkExpenseInputV2 {
+    description: string;
+    amount: number;
+    paid_by?: string;
+    paid_by_placeholder_id?: string;
+    category?: ExpenseCategory;
+    expense_date?: string;
+    notes?: string;
+    /** Members to split this specific expense among */
+    split_among: {
+        user_id?: string;
+        placeholder_id?: string;
+    }[];
+}
+
+export interface CreateBulkExpensesInputV2 {
+    group_id: string;
+    split_type: SplitType;
+    expenses: BulkExpenseInputV2[];
+}
+
 export interface UpdateExpenseInput {
     description?: string;
     amount?: number;
@@ -377,6 +420,293 @@ export const expensesService = {
         });
 
         return { expense };
+    },
+
+    /**
+     * Create multiple expenses in a single database transaction
+     * Optimized for batch operations - single DB hit for expenses, single for splits
+     * 
+     * @param input - Bulk expense input with shared group and split configuration
+     * @param createdBy - User ID of the creator
+     * @returns Created expenses or error
+     */
+    async createBulkExpenses(
+        input: CreateBulkExpensesInput,
+        createdBy: string
+    ): Promise<{ expenses: Expense[]; error?: string }> {
+        const supabase = createClient();
+
+        // Validate inputs
+        if (!input.expenses || input.expenses.length === 0) {
+            return { expenses: [], error: "No expenses provided" };
+        }
+
+        if (input.expenses.length > 50) {
+            return { expenses: [], error: "Maximum 50 expenses per batch" };
+        }
+
+        if (!input.split_among || input.split_among.length === 0) {
+            return { expenses: [], error: "No members selected for split" };
+        }
+
+        // Verify user is a member of the group
+        const isMember = await isGroupMember(input.group_id, createdBy);
+        if (!isMember) {
+            logger.security(
+                SecurityEvents.ACCESS_DENIED,
+                "medium",
+                "blocked",
+                { userId: createdBy, groupId: input.group_id, action: "bulk_expense_create" }
+            );
+            return { expenses: [], error: "Access denied" };
+        }
+
+        // Prepare expenses for batch insert
+        const expensesToInsert = input.expenses.map((exp) => {
+            const expenseData: Record<string, unknown> = {
+                group_id: input.group_id,
+                description: exp.description,
+                amount: exp.amount,
+                category: exp.category || "other",
+                split_type: input.split_type,
+                expense_date: exp.expense_date || new Date().toISOString().split("T")[0],
+                notes: exp.notes || null,
+            };
+
+            // Set payer
+            if (exp.paid_by_placeholder_id) {
+                expenseData.paid_by_placeholder_id = exp.paid_by_placeholder_id;
+            } else if (exp.paid_by) {
+                expenseData.paid_by = exp.paid_by;
+            }
+
+            return expenseData;
+        });
+
+        // SINGLE DB HIT: Insert all expenses at once
+        const { data: createdExpenses, error: expenseError } = await supabase
+            .from("expenses")
+            .insert(expensesToInsert)
+            .select();
+
+        if (expenseError || !createdExpenses || createdExpenses.length === 0) {
+            return {
+                expenses: [],
+                error: expenseError?.message || "Failed to create expenses"
+            };
+        }
+
+        // Prepare splits for all expenses
+        const allSplits: {
+            expense_id: string;
+            user_id: string | null;
+            placeholder_id: string | null;
+            amount: number;
+            percentage: number | null;
+        }[] = [];
+
+        const memberCount = input.split_among.length;
+
+        createdExpenses.forEach((expense, index) => {
+            const originalExpense = input.expenses[index];
+            const splitAmount = originalExpense.amount / memberCount;
+            const roundedAmount = Math.floor(splitAmount * 100) / 100;
+            const remainder = originalExpense.amount - roundedAmount * memberCount;
+
+            input.split_among.forEach((member, memberIndex) => {
+                allSplits.push({
+                    expense_id: expense.id,
+                    user_id: member.user_id || null,
+                    placeholder_id: member.placeholder_id || null,
+                    // Add remainder to first member
+                    amount: memberIndex === 0
+                        ? roundedAmount + Math.round(remainder * 100) / 100
+                        : roundedAmount,
+                    percentage: input.split_type === "percentage"
+                        ? Math.round(100 / memberCount * 100) / 100
+                        : null,
+                });
+            });
+        });
+
+        // SINGLE DB HIT: Insert all splits at once
+        const { error: splitsError } = await supabase
+            .from("expense_splits")
+            .insert(allSplits);
+
+        if (splitsError) {
+            // Rollback: delete all created expenses
+            const expenseIds = createdExpenses.map((e) => e.id);
+            await supabase.from("expenses").delete().in("id", expenseIds);
+            return { expenses: [], error: splitsError.message };
+        }
+
+        // SINGLE DB HIT: Update group's updated_at
+        await supabase
+            .from("groups")
+            .update({ updated_at: new Date().toISOString() })
+            .eq("id", input.group_id);
+
+        // SINGLE DB HIT: Log activities for all expenses
+        const activities = createdExpenses.map((expense) => ({
+            user_id: createdBy,
+            group_id: input.group_id,
+            entity_type: "expense",
+            entity_id: expense.id,
+            action: "created",
+            metadata: {
+                description: expense.description,
+                amount: expense.amount,
+                bulk_created: true,
+            },
+        }));
+
+        await supabase.from("activities").insert(activities);
+
+        return { expenses: createdExpenses as Expense[] };
+    },
+
+    /**
+     * Create multiple expenses with per-expense split configuration
+     * V2: Each expense has its own split_among array
+     * 
+     * @param input - Bulk expense input with per-expense splits
+     * @param createdBy - User ID of the creator
+     * @returns Created expenses or error
+     */
+    async createBulkExpensesV2(
+        input: CreateBulkExpensesInputV2,
+        createdBy: string
+    ): Promise<{ expenses: Expense[]; error?: string }> {
+        const supabase = createClient();
+
+        if (!input.expenses || input.expenses.length === 0) {
+            return { expenses: [], error: "No expenses provided" };
+        }
+
+        if (input.expenses.length > 50) {
+            return { expenses: [], error: "Maximum 50 expenses per batch" };
+        }
+
+        // Validate each expense has split_among
+        for (const exp of input.expenses) {
+            if (!exp.split_among || exp.split_among.length === 0) {
+                return { expenses: [], error: `Expense "${exp.description}" has no members to split among` };
+            }
+        }
+
+        // Verify user is a member of the group
+        const isMember = await isGroupMember(input.group_id, createdBy);
+        if (!isMember) {
+            logger.security(
+                SecurityEvents.ACCESS_DENIED,
+                "medium",
+                "blocked",
+                { userId: createdBy, groupId: input.group_id, action: "bulk_expense_create_v2" }
+            );
+            return { expenses: [], error: "Access denied" };
+        }
+
+        // Prepare expenses for batch insert
+        const expensesToInsert = input.expenses.map((exp) => {
+            const expenseData: Record<string, unknown> = {
+                group_id: input.group_id,
+                description: exp.description,
+                amount: exp.amount,
+                category: exp.category || "other",
+                split_type: input.split_type,
+                expense_date: exp.expense_date || new Date().toISOString().split("T")[0],
+                notes: exp.notes || null,
+            };
+
+            if (exp.paid_by_placeholder_id) {
+                expenseData.paid_by_placeholder_id = exp.paid_by_placeholder_id;
+            } else if (exp.paid_by) {
+                expenseData.paid_by = exp.paid_by;
+            }
+
+            return expenseData;
+        });
+
+        // SINGLE DB HIT: Insert all expenses at once
+        const { data: createdExpenses, error: expenseError } = await supabase
+            .from("expenses")
+            .insert(expensesToInsert)
+            .select();
+
+        if (expenseError || !createdExpenses || createdExpenses.length === 0) {
+            return {
+                expenses: [],
+                error: expenseError?.message || "Failed to create expenses"
+            };
+        }
+
+        // Prepare splits for all expenses - each with its own split_among
+        const allSplits: {
+            expense_id: string;
+            user_id: string | null;
+            placeholder_id: string | null;
+            amount: number;
+            percentage: number | null;
+        }[] = [];
+
+        createdExpenses.forEach((expense, index) => {
+            const originalExpense = input.expenses[index];
+            const memberCount = originalExpense.split_among.length;
+            const splitAmount = originalExpense.amount / memberCount;
+            const roundedAmount = Math.floor(splitAmount * 100) / 100;
+            const remainder = originalExpense.amount - roundedAmount * memberCount;
+
+            originalExpense.split_among.forEach((member, memberIndex) => {
+                allSplits.push({
+                    expense_id: expense.id,
+                    user_id: member.user_id || null,
+                    placeholder_id: member.placeholder_id || null,
+                    amount: memberIndex === 0
+                        ? roundedAmount + Math.round(remainder * 100) / 100
+                        : roundedAmount,
+                    percentage: input.split_type === "percentage"
+                        ? Math.round(100 / memberCount * 100) / 100
+                        : null,
+                });
+            });
+        });
+
+        // SINGLE DB HIT: Insert all splits at once
+        const { error: splitsError } = await supabase
+            .from("expense_splits")
+            .insert(allSplits);
+
+        if (splitsError) {
+            // Rollback: delete all created expenses
+            const expenseIds = createdExpenses.map((e) => e.id);
+            await supabase.from("expenses").delete().in("id", expenseIds);
+            return { expenses: [], error: splitsError.message };
+        }
+
+        // SINGLE DB HIT: Update group's updated_at
+        await supabase
+            .from("groups")
+            .update({ updated_at: new Date().toISOString() })
+            .eq("id", input.group_id);
+
+        // SINGLE DB HIT: Log activities for all expenses
+        const activities = createdExpenses.map((expense) => ({
+            user_id: createdBy,
+            group_id: input.group_id,
+            entity_type: "expense",
+            entity_id: expense.id,
+            action: "created",
+            metadata: {
+                description: expense.description,
+                amount: expense.amount,
+                bulk_created: true,
+            },
+        }));
+
+        await supabase.from("activities").insert(activities);
+
+        return { expenses: createdExpenses as Expense[] };
     },
 
     /**
