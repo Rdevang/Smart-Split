@@ -149,6 +149,37 @@ export async function onGroupMutation(groupId: string, creatorId: string) {
     revalidatePath(`/groups/${groupId}`);
 }
 
+/**
+ * Invalidate all related caches when bulk expenses are added
+ * Optimized for multiple expenses at once - batches Redis operations
+ */
+export async function onBulkExpenseMutation(
+    groupId: string,
+    payerIds: string[],
+    allParticipantIds: string[]
+) {
+    // Deduplicate all user IDs
+    const allUserIds = [...new Set([...payerIds, ...allParticipantIds])];
+
+    // 1. Redis invalidation - batch all user cache invalidations
+    await Promise.all([
+        invalidateGroupCache(groupId),
+        ...allUserIds.map((id) => invalidateUserCache(id)),
+    ]);
+
+    // 2. Tag-based invalidation for each payer
+    // This handles expense lists and balance updates
+    for (const payerId of payerIds) {
+        revalidateExpenseTags(groupId, payerId, allParticipantIds);
+    }
+
+    // 3. Path revalidation
+    revalidatePath(`/groups/${groupId}`);
+    revalidatePath(`/groups/${groupId}/analytics`);
+    revalidatePath("/dashboard");
+    revalidatePath("/expenses");
+}
+
 // ============================================
 // URL ID ENCRYPTION (Server-side only)
 // ============================================

@@ -37,7 +37,7 @@ function validateBulkExpenses(input: unknown) {
     }
 
     const data = validation.data;
-    
+
     // Check each expense has a payer
     for (const expense of data.expenses) {
         if (!expense.paid_by && !expense.paid_by_placeholder_id) {
@@ -59,9 +59,9 @@ function calculateSplitAmounts(amount: number, memberCount: number): number[] {
     const splitAmount = amount / memberCount;
     const roundedAmount = Math.floor(splitAmount * 100) / 100;
     const remainder = amount - roundedAmount * memberCount;
-    
-    return Array(memberCount).fill(0).map((_, index) => 
-        index === 0 
+
+    return Array(memberCount).fill(0).map((_, index) =>
+        index === 0
             ? roundedAmount + Math.round(remainder * 100) / 100
             : roundedAmount
     );
@@ -131,7 +131,7 @@ describe("Bulk Expense Validation", () => {
                 description: "Test",
                 amount: 50,
                 paid_by: "550e8400-e29b-41d4-a716-446655440001",
-                split_among: [{ }], // Invalid - no user_id or placeholder_id
+                split_among: [{}], // Invalid - no user_id or placeholder_id
             }],
         });
         expect(result.valid).toBe(false);
@@ -411,7 +411,7 @@ describe("Expense Data Transformation", () => {
     });
 
     it("defaults category to other if not provided", () => {
-        const expense = {
+        const expense: { description: string; amount: number; paid_by: string; split_among: { user_id: string }[]; category?: string } = {
             description: "Test",
             amount: 100,
             paid_by: "user-123",
@@ -423,7 +423,7 @@ describe("Expense Data Transformation", () => {
     });
 
     it("defaults expense_date to today if not provided", () => {
-        const expense = {
+        const expense: { description: string; amount: number; paid_by: string; split_among: { user_id: string }[]; expense_date?: string } = {
             description: "Test",
             amount: 100,
             paid_by: "user-123",
@@ -433,5 +433,174 @@ describe("Expense Data Transformation", () => {
         const today = new Date().toISOString().split("T")[0];
         const expenseDate = expense.expense_date || today;
         expect(expenseDate).toBe(today);
+    });
+});
+
+describe("Cache Invalidation Logic", () => {
+    // Helper to extract user IDs for cache invalidation (mirrors API route logic)
+    function extractUserIdsForCacheInvalidation(expenses: Array<{
+        paid_by?: string;
+        paid_by_placeholder_id?: string;
+        split_among: Array<{ user_id?: string; placeholder_id?: string }>;
+    }>) {
+        const payerIds = new Set<string>();
+        const participantIds = new Set<string>();
+
+        expenses.forEach((exp) => {
+            if (exp.paid_by) {
+                payerIds.add(exp.paid_by);
+            }
+            exp.split_among.forEach((member) => {
+                if (member.user_id) {
+                    participantIds.add(member.user_id);
+                }
+            });
+        });
+
+        return {
+            payerIds: [...payerIds],
+            participantIds: [...participantIds],
+            allUserIds: [...new Set([...payerIds, ...participantIds])],
+        };
+    }
+
+    it("extracts payer IDs correctly", () => {
+        const expenses = [
+            {
+                paid_by: "user-1",
+                split_among: [{ user_id: "user-1" }, { user_id: "user-2" }],
+            },
+            {
+                paid_by: "user-2",
+                split_among: [{ user_id: "user-1" }],
+            },
+        ];
+
+        const result = extractUserIdsForCacheInvalidation(expenses);
+        expect(result.payerIds).toContain("user-1");
+        expect(result.payerIds).toContain("user-2");
+        expect(result.payerIds).toHaveLength(2);
+    });
+
+    it("extracts participant IDs correctly", () => {
+        const expenses = [
+            {
+                paid_by: "user-1",
+                split_among: [
+                    { user_id: "user-1" },
+                    { user_id: "user-2" },
+                    { user_id: "user-3" },
+                ],
+            },
+        ];
+
+        const result = extractUserIdsForCacheInvalidation(expenses);
+        expect(result.participantIds).toContain("user-1");
+        expect(result.participantIds).toContain("user-2");
+        expect(result.participantIds).toContain("user-3");
+        expect(result.participantIds).toHaveLength(3);
+    });
+
+    it("deduplicates user IDs across all expenses", () => {
+        const expenses = [
+            {
+                paid_by: "user-1",
+                split_among: [{ user_id: "user-1" }, { user_id: "user-2" }],
+            },
+            {
+                paid_by: "user-1", // Same payer
+                split_among: [{ user_id: "user-2" }, { user_id: "user-3" }],
+            },
+        ];
+
+        const result = extractUserIdsForCacheInvalidation(expenses);
+        expect(result.allUserIds).toHaveLength(3); // user-1, user-2, user-3
+        expect(result.payerIds).toHaveLength(1); // user-1 appears once
+    });
+
+    it("excludes placeholder IDs from cache invalidation", () => {
+        const expenses = [
+            {
+                paid_by_placeholder_id: "placeholder-1", // Should be excluded
+                split_among: [
+                    { user_id: "user-1" },
+                    { placeholder_id: "placeholder-2" }, // Should be excluded
+                ],
+            },
+        ];
+
+        const result = extractUserIdsForCacheInvalidation(expenses);
+        expect(result.payerIds).toHaveLength(0);
+        expect(result.participantIds).toHaveLength(1);
+        expect(result.participantIds).toContain("user-1");
+    });
+
+    it("handles mix of users and placeholders", () => {
+        const expenses = [
+            {
+                paid_by: "user-1",
+                split_among: [
+                    { user_id: "user-1" },
+                    { placeholder_id: "placeholder-1" },
+                ],
+            },
+            {
+                paid_by_placeholder_id: "placeholder-2",
+                split_among: [
+                    { user_id: "user-2" },
+                    { user_id: "user-3" },
+                ],
+            },
+        ];
+
+        const result = extractUserIdsForCacheInvalidation(expenses);
+        expect(result.payerIds).toEqual(["user-1"]);
+        expect(result.participantIds.sort()).toEqual(["user-1", "user-2", "user-3"]);
+        expect(result.allUserIds.sort()).toEqual(["user-1", "user-2", "user-3"]);
+    });
+
+    it("returns empty arrays for all-placeholder expenses", () => {
+        const expenses = [
+            {
+                paid_by_placeholder_id: "placeholder-1",
+                split_among: [
+                    { placeholder_id: "placeholder-1" },
+                    { placeholder_id: "placeholder-2" },
+                ],
+            },
+        ];
+
+        const result = extractUserIdsForCacheInvalidation(expenses);
+        expect(result.payerIds).toHaveLength(0);
+        expect(result.participantIds).toHaveLength(0);
+        expect(result.allUserIds).toHaveLength(0);
+    });
+});
+
+describe("Lock Key Generation", () => {
+    // Mirror the lock key generation logic
+    const LockKeys = {
+        bulkExpense: (groupId: string, userId: string) =>
+            `bulk-expense:${groupId}:${userId}`,
+    };
+
+    it("generates unique lock keys per group and user", () => {
+        const key1 = LockKeys.bulkExpense("group-1", "user-1");
+        const key2 = LockKeys.bulkExpense("group-1", "user-2");
+        const key3 = LockKeys.bulkExpense("group-2", "user-1");
+
+        expect(key1).toBe("bulk-expense:group-1:user-1");
+        expect(key2).toBe("bulk-expense:group-1:user-2");
+        expect(key3).toBe("bulk-expense:group-2:user-1");
+
+        // All keys should be unique
+        expect(new Set([key1, key2, key3]).size).toBe(3);
+    });
+
+    it("generates consistent keys for same input", () => {
+        const key1 = LockKeys.bulkExpense("group-abc", "user-xyz");
+        const key2 = LockKeys.bulkExpense("group-abc", "user-xyz");
+
+        expect(key1).toBe(key2);
     });
 });

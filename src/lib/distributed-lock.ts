@@ -160,6 +160,10 @@ export const LockKeys = {
     expense: (groupId: string, expenseId?: string) =>
         expenseId ? `expense:${groupId}:${expenseId}` : `expense:${groupId}:new`,
 
+    /** Lock for bulk expense creation (prevent duplicate batch submissions) */
+    bulkExpense: (groupId: string, userId: string) =>
+        `bulk-expense:${groupId}:${userId}`,
+
     /** Lock for group membership changes */
     membership: (groupId: string, userId: string) =>
         `membership:${groupId}:${userId}`,
