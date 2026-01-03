@@ -241,7 +241,7 @@ describe("ActivityFilters", () => {
         });
     });
 
-    it("disables inputs when isLoading is true", () => {
+    it("keeps search input enabled during loading for better UX", () => {
         render(
             <ActivityFilters
                 filters={defaultFilters}
@@ -252,8 +252,9 @@ describe("ActivityFilters", () => {
             />
         );
 
+        // Search input stays enabled so users can keep typing while results load
         const searchInput = screen.getByPlaceholderText("Search activities...");
-        expect(searchInput).toBeDisabled();
+        expect(searchInput).not.toBeDisabled();
     });
 
     it("renders all category options", async () => {

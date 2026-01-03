@@ -54,10 +54,10 @@ export function ActivityPageClient({
 
     // Fetch activities from API
     const fetchActivities = useCallback(
-        async (pageNum: number, currentFilters: ActivityFiltersState, append = false) => {
+        async (pageNum: number, currentFilters: ActivityFiltersState, append = false, showLoading = true) => {
             if (append) {
                 setIsLoadingMore(true);
-            } else {
+            } else if (showLoading) {
                 setIsLoading(true);
             }
 
@@ -103,10 +103,23 @@ export function ActivityPageClient({
     );
 
     // Handle filter changes - reset to page 1
+    // Don't show loading spinner for search (keeps focus stable while typing)
     const handleFiltersChange = useCallback(
         (newFilters: ActivityFiltersState) => {
-            setFilters(newFilters);
-            fetchActivities(1, newFilters, false);
+            setFilters((prevFilters) => {
+                // Check if only search changed
+                const onlySearchChanged =
+                    newFilters.groupId === prevFilters.groupId &&
+                    newFilters.memberId === prevFilters.memberId &&
+                    newFilters.category === prevFilters.category &&
+                    newFilters.dateFrom === prevFilters.dateFrom &&
+                    newFilters.dateTo === prevFilters.dateTo &&
+                    newFilters.search !== prevFilters.search;
+
+                // Don't show loading for search-only changes (keeps typing smooth)
+                fetchActivities(1, newFilters, false, !onlySearchChanged);
+                return newFilters;
+            });
         },
         [fetchActivities]
     );

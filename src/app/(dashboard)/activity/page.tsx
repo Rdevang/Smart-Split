@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { activitiesServerService } from "@/services/activities.server";
+import { friendsCachedServerService } from "@/services/friends.cached.server";
 import { ActivityPageClient } from "@/components/features/activity/activity-page-client";
 import { encryptUrlId } from "@/lib/url-ids";
 
@@ -17,7 +18,7 @@ export default async function ActivityPage() {
     const user = session.user;
 
     // Fetch initial data in parallel
-    const [activitiesData, userGroups, uniqueMembers] = await Promise.all([
+    const [activitiesData, userGroups, pastMembers, userProfile] = await Promise.all([
         // Initial activities (first page)
         activitiesServerService.getUserActivities(user.id, INITIAL_PAGE_SIZE),
 
@@ -32,46 +33,23 @@ export default async function ActivityPage() {
             `)
             .eq("user_id", user.id),
 
-        // Get unique members from user's groups for filter dropdown
-        (async () => {
-            const { data: memberships } = await supabase
-                .from("group_members")
-                .select("group_id")
-                .eq("user_id", user.id);
+        // Get all people user has been in groups with (cached)
+        friendsCachedServerService.getPastGroupMembers(user.id),
 
-            if (!memberships || memberships.length === 0) {
-                return [];
-            }
-
-            const groupIds = memberships.map((m) => m.group_id);
-
-            const { data: members } = await supabase
-                .from("group_members")
-                .select(`
-                    user_id,
-                    profile:profiles (
-                        id,
-                        full_name
-                    )
-                `)
-                .in("group_id", groupIds)
-                .not("user_id", "is", null);
-
-            // Deduplicate members
-            const memberMap = new Map<string, { id: string; name: string }>();
-            (members || []).forEach((m) => {
-                const profile = m.profile as unknown as { id: string; full_name: string | null } | null;
-                if (profile && !memberMap.has(profile.id)) {
-                    memberMap.set(profile.id, {
-                        id: profile.id,
-                        name: profile.full_name || "Unknown",
-                    });
-                }
-            });
-
-            return Array.from(memberMap.values());
-        })(),
+        // Get current user's profile for "You" option
+        supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("id", user.id)
+            .single(),
     ]);
+
+    // Build members list with "You" at the top
+    const currentUserName = userProfile.data?.full_name || user.email || "You";
+    const members = [
+        { id: user.id, name: `You (${currentUserName})` },
+        ...pastMembers,
+    ];
 
     const activities = activitiesData || [];
 
@@ -116,7 +94,7 @@ export default async function ActivityPage() {
                 initialTotalCount={totalCount || 0}
                 initialHasMore={hasMore}
                 groups={groups}
-                members={uniqueMembers}
+                members={members}
             />
         </div>
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, useId } from "react";
 import { Search, Filter, X, Calendar, Users, Tag, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -67,16 +67,44 @@ export function ActivityFilters({
 }: ActivityFiltersProps) {
     const [localSearch, setLocalSearch] = useState(filters.search);
     const [showFilters, setShowFilters] = useState(false);
+    const filtersRef = useRef(filters);
+    const onFiltersChangeRef = useRef(onFiltersChange);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const wasLoadingRef = useRef(false);
+    const hadFocusRef = useRef(false);
+    const searchInputId = useId();
 
-    // Debounce search input (300ms)
-    const debouncedSearch = useDebounce(localSearch, 300);
+    // Track focus state and restore after loading
+    useEffect(() => {
+        if (isLoading && !wasLoadingRef.current) {
+            // Starting to load - check if search input had focus
+            hadFocusRef.current = document.activeElement === searchInputRef.current;
+        }
+        if (!isLoading && wasLoadingRef.current && hadFocusRef.current) {
+            // Loading finished and search input had focus - restore it using RAF for reliability
+            requestAnimationFrame(() => {
+                searchInputRef.current?.focus();
+            });
+            hadFocusRef.current = false;
+        }
+        wasLoadingRef.current = isLoading;
+    }, [isLoading]);
+
+    // Keep refs updated
+    useEffect(() => {
+        filtersRef.current = filters;
+        onFiltersChangeRef.current = onFiltersChange;
+    });
+
+    // Debounce search input (500ms for better UX while typing)
+    const debouncedSearch = useDebounce(localSearch, 500);
 
     // Update filters when debounced search changes
     useEffect(() => {
-        if (debouncedSearch !== filters.search) {
-            onFiltersChange({ ...filters, search: debouncedSearch });
+        if (debouncedSearch !== filtersRef.current.search) {
+            onFiltersChangeRef.current({ ...filtersRef.current, search: debouncedSearch });
         }
-    }, [debouncedSearch, filters, onFiltersChange]);
+    }, [debouncedSearch]);
 
     const handleFilterChange = useCallback(
         (key: keyof ActivityFiltersState, value: string) => {
@@ -130,12 +158,13 @@ export function ActivityFilters({
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                     <Input
+                        ref={searchInputRef}
+                        id={searchInputId}
                         type="text"
                         placeholder="Search activities..."
                         value={localSearch}
                         onChange={(e) => setLocalSearch(e.target.value)}
                         className="pl-10"
-                        disabled={isLoading}
                     />
                     {localSearch && (
                         <button

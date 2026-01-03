@@ -30,7 +30,7 @@ export default async function AdminLayout({
             userName={profile?.full_name || user.email || "Admin"}
             userRole={profile?.role || "admin"}
         >
-            {children}
+                    {children}
         </AdminLayoutClient>
     );
 }
