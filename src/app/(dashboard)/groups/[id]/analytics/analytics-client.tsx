@@ -93,19 +93,6 @@ const CATEGORY_EMOJIS: Record<string, string> = {
     groceries: "🛒", other: "📦",
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-    food: "from-orange-500 to-amber-500",
-    transport: "from-blue-500 to-cyan-500",
-    entertainment: "from-purple-500 to-pink-500",
-    utilities: "from-gray-500 to-slate-500",
-    rent: "from-lime-500 to-green-500",
-    shopping: "from-pink-500 to-rose-500",
-    travel: "from-teal-500 to-emerald-500",
-    healthcare: "from-red-500 to-orange-500",
-    groceries: "from-green-500 to-teal-500",
-    other: "from-slate-500 to-gray-500",
-};
-
 type TimeFilter = "all" | "month" | "week";
 
 export function AnalyticsClient({
@@ -441,23 +428,9 @@ export function AnalyticsClient({
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Where the Money Goes</h2>
                         <p className="text-gray-500 dark:text-gray-400 text-sm">Spending breakdown by category</p>
                     </div>
-                </div>
-
-                {/* Category Pills */}
-                <div className="flex flex-wrap gap-2 mb-6">
-                    {insights.sortedCategories.slice(0, 6).map(([category, amount], idx) => {
-                        const percentage = insights.total > 0 ? (amount / insights.total) * 100 : 0;
-                        return (
-                            <div
-                                key={category}
-                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r ${CATEGORY_COLORS[category] || "from-gray-500 to-slate-500"} text-white`}
-                            >
-                                <span className="text-lg">{CATEGORY_EMOJIS[category] || "📦"}</span>
-                                <span className="font-medium capitalize">{category}</span>
-                                <span className="text-white/80 text-sm">{percentage.toFixed(0)}%</span>
-                            </div>
-                        );
-                    })}
+                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
+                        <PieChart className="h-5 w-5 text-white" />
+                    </div>
                 </div>
 
                 <CategoryChart expenses={filteredExpenses} currency={currency} />

@@ -48,7 +48,7 @@ export const groupsCachedServerService = {
     },
 
     /**
-     * Get group balances (cached for 15 minutes - expensive computation)
+     * Get group balances (cached for 30 minutes - expensive computation)
      * This is the MOST expensive query - calls get_group_balances RPC
      * Uses REQUEST COALESCING - prevents DB stampede on cold start
      * Cache key: group:{groupId}:balances
@@ -57,7 +57,7 @@ export const groupsCachedServerService = {
         return cachedCoalesced(
             CacheKeys.groupBalances(groupId),
             () => groupsServerService.getGroupBalances(groupId),
-            CacheTTL.LONG // 15 minutes - balances are expensive to compute
+            CacheTTL.VERY_LONG // 30 minutes - balances are expensive to compute
         );
     },
 

@@ -138,14 +138,17 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
 
     const activeData = activeIndex !== null ? categoryData[activeIndex] : null;
 
+    // Limit to 8 categories max for display
+    const displayData = categoryData.slice(0, 8);
+
     return (
-        <div className="flex flex-col sm:flex-row sm:h-[320px] gap-4 sm:gap-6">
+        <div className="flex flex-col gap-6">
             {/* Donut Chart with Center Label */}
-            <div className="relative h-[200px] sm:h-full w-full sm:w-[200px] flex-shrink-0 [&_svg]:outline-none [&_svg]:focus:outline-none [&_.recharts-surface]:outline-none">
+            <div className="relative h-[280px] lg:h-[300px] w-full max-w-[300px] mx-auto">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <defs>
-                            {categoryData.map((entry, idx) => (
+                            {displayData.map((entry, idx) => (
                                 <linearGradient key={`gradient-${idx}`} id={`categoryGradient-${idx}`} x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
                                     <stop offset="100%" stopColor={entry.color} stopOpacity={0.7} />
@@ -153,19 +156,19 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                             ))}
                         </defs>
                         <Pie
-                            data={categoryData}
+                            data={displayData}
                             cx="50%"
                             cy="50%"
-                            innerRadius={45}
-                            outerRadius={activeIndex !== null ? 80 : 75}
-                            paddingAngle={3}
+                            innerRadius={70}
+                            outerRadius={activeIndex !== null ? 120 : 115}
+                            paddingAngle={2}
                             dataKey="value"
                             onMouseEnter={(_, idx) => setActiveIndex(idx)}
                             onMouseLeave={() => setActiveIndex(null)}
                             animationBegin={0}
                             animationDuration={800}
                         >
-                            {categoryData.map((entry, idx) => (
+                            {displayData.map((entry, idx) => (
                                 <Cell
                                     key={`cell-${idx}`}
                                     fill={`url(#categoryGradient-${idx})`}
@@ -185,15 +188,18 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                     {activeData ? (
                         <>
-                            <span className="text-2xl">{activeData.emoji}</span>
-                            <span className="text-sm font-bold text-gray-900 dark:text-white">
+                            <span className="text-3xl">{activeData.emoji}</span>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">
                                 {activeData.percentage.toFixed(0)}%
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {formatCurrency(activeData.value, currency)}
                             </span>
                         </>
                     ) : (
                         <>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">Total</span>
-                            <span className="text-base font-bold text-gray-900 dark:text-white">
+                            <span className="text-sm text-gray-500 dark:text-gray-400">Total</span>
+                            <span className="text-xl font-bold text-gray-900 dark:text-white">
                                 {formatCurrency(total, currency)}
                             </span>
                         </>
@@ -201,13 +207,13 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                 </div>
             </div>
 
-            {/* Legend with percentages - Grid on mobile, list on desktop */}
-            <div className="flex-1 grid grid-cols-2 sm:grid-cols-1 gap-2 sm:space-y-2 sm:block overflow-auto sm:max-h-full sm:pr-2">
-                {categoryData.map((item, idx) => (
+            {/* Legend - Horizontal on large screens */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-3 lg:flex-1">
+                {displayData.map((item, idx) => (
                     <div
                         key={idx}
                         className={cn(
-                            "flex items-center gap-2 sm:gap-3 rounded-lg p-2 transition-all cursor-pointer",
+                            "flex items-center gap-2 rounded-lg px-2.5 py-2 transition-all cursor-pointer",
                             activeIndex === idx
                                 ? "bg-gray-100 dark:bg-gray-800"
                                 : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
@@ -216,19 +222,19 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                         onMouseLeave={() => setActiveIndex(null)}
                     >
                         <div
-                            className="h-3 w-3 flex-shrink-0 rounded-full"
+                            className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                             style={{ backgroundColor: item.color }}
                         />
-                        <span className="text-lg sm:text-xl">{item.emoji}</span>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                        <span className="text-base">{item.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                                 {item.label}
                             </p>
-                            <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {formatCurrency(item.value, currency)}
                             </p>
                         </div>
-                        <span className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        <span className="text-sm font-bold text-gray-900 dark:text-white whitespace-nowrap">
                             {item.percentage.toFixed(0)}%
                         </span>
                     </div>

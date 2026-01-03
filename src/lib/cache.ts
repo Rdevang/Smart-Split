@@ -191,8 +191,9 @@ export const CacheKeys = {
 export const CacheTTL = {
     SHORT: 60,           // 1 minute - for very dynamic data
     MEDIUM: 300,         // 5 minutes - for semi-dynamic data
-    LONG: 900,           // 15 minutes - for expensive computations
-    VERY_LONG: 3600,     // 1 hour - for rarely changing data
+    LONG: 900,           // 15 minutes - for moderately expensive computations
+    VERY_LONG: 1800,     // 30 minutes - for expensive computations (balances, analytics)
+    EXTRA_LONG: 3600,    // 1 hour - for rarely changing data
     NULL_RESULT: 120,    // 2 minutes - for caching "not found" results (cache penetration protection)
 } as const;
 
