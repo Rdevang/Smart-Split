@@ -435,7 +435,7 @@ export function AnalyticsClient({
             </div>
 
             {/* Category Breakdown - Visual */}
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 outline-none focus:outline-none focus-within:outline-none [&_*]:outline-none">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Where the Money Goes</h2>
@@ -466,7 +466,7 @@ export function AnalyticsClient({
             {/* Two Column Layout */}
             <div className="grid md:grid-cols-2 gap-6">
                 {/* Spending Trend */}
-                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 outline-none focus:outline-none focus-within:outline-none [&_*]:outline-none">
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Spending Trend</h2>
@@ -480,7 +480,7 @@ export function AnalyticsClient({
                 </div>
 
                 {/* Top Expenses */}
-                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 outline-none focus:outline-none focus-within:outline-none [&_*]:outline-none">
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Top Expenses</h2>
@@ -495,7 +495,7 @@ export function AnalyticsClient({
             </div>
 
             {/* Member Section */}
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 outline-none focus:outline-none focus-within:outline-none [&_*]:outline-none">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Who Paid What</h2>
@@ -555,7 +555,7 @@ export function AnalyticsClient({
             </div>
 
             {/* Balances */}
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 outline-none focus:outline-none focus-within:outline-none [&_*]:outline-none">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Settlement Status</h2>
@@ -608,7 +608,7 @@ export function AnalyticsClient({
             </div>
 
             {/* Paid vs Share Comparison */}
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-100 dark:border-gray-800 outline-none focus:outline-none focus-within:outline-none [&_*]:outline-none">
                 <div className="flex items-center justify-between mb-6">
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">Paid vs Share</h2>

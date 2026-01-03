@@ -141,7 +141,7 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
     return (
         <div className="flex flex-col sm:flex-row sm:h-[320px] gap-4 sm:gap-6">
             {/* Donut Chart with Center Label */}
-            <div className="relative h-[200px] sm:h-full w-full sm:w-[200px] flex-shrink-0">
+            <div className="relative h-[200px] sm:h-full w-full sm:w-[200px] flex-shrink-0 [&_svg]:outline-none [&_svg]:focus:outline-none [&_.recharts-surface]:outline-none">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <defs>
@@ -310,7 +310,7 @@ export function TrendChart({ expenses, currency }: TrendChartProps) {
                 <span className="text-xs text-gray-500">vs previous period</span>
             </div>
 
-            <div className="h-[240px]">
+            <div className="h-[240px] [&_svg]:outline-none [&_svg]:focus:outline-none [&_.recharts-surface]:outline-none">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={trendData}>
                         <defs>
@@ -524,7 +524,7 @@ export function SpendByMemberChart({ expenses, currency, currentUserId }: SpendB
     }
 
     return (
-        <div className="h-[280px]">
+        <div className="h-[280px] [&_svg]:outline-none [&_svg]:focus:outline-none [&_.recharts-surface]:outline-none">
             <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                     data={memberData}
@@ -627,7 +627,7 @@ export function BalancesChart({ balances, currency, currentUserId }: BalancesCha
     const maxAbsBalance = Math.max(...balanceData.map(d => Math.abs(d.balance)));
 
     return (
-        <div className="h-[280px]">
+        <div className="h-[280px] [&_svg]:outline-none [&_svg]:focus:outline-none [&_.recharts-surface]:outline-none">
             <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={balanceData} barSize={40}>
                     <defs>
