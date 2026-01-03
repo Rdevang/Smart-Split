@@ -6,7 +6,7 @@ import Image from "next/image";
 import {
     Search, Pencil, Trash2, X, Check, AlertTriangle,
     Utensils, Car, Film, Zap, Home, ShoppingBag, Plane,
-    Heart, ShoppingCart, Receipt, UserCircle, Filter, ChevronDown
+    Heart, ShoppingCart, Receipt, UserCircle, Filter
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,9 +56,9 @@ interface Member {
 }
 
 interface ExpensesListProps {
-    groupId: string;
+    groupId?: string;  // Reserved for future use
     expenses: Expense[];
-    members: Member[];
+    members?: Member[];  // Reserved for future use
     currentUserId: string;
     currency: string;
     isAdmin?: boolean;
@@ -103,7 +103,7 @@ const categoryColors: Record<ExpenseCategory, string> = {
     other: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
-export function ExpensesList({ groupId, expenses, members, currentUserId, currency, isAdmin = false }: ExpensesListProps) {
+export function ExpensesList({ expenses, currentUserId, currency, isAdmin = false }: ExpensesListProps) {
     const router = useRouter();
     const toast = useToast();
 
@@ -184,7 +184,7 @@ export function ExpensesList({ groupId, expenses, members, currentUserId, curren
             } else {
                 toast.error(result.error || "Failed to update expense");
             }
-        } catch (error) {
+        } catch {
             toast.error("Failed to update expense");
         } finally {
             setIsUpdating(false);
@@ -206,7 +206,7 @@ export function ExpensesList({ groupId, expenses, members, currentUserId, curren
             } else {
                 toast.error(result.error || "Failed to delete expense");
             }
-        } catch (error) {
+        } catch {
             toast.error("Failed to delete expense");
         } finally {
             setIsDeleting(false);
