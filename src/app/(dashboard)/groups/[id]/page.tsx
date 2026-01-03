@@ -185,11 +185,11 @@ export default async function GroupPage({ params }: GroupPageProps) {
             </div>
 
             <div className="grid gap-8 lg:grid-cols-3">
-                {/* Expenses List */}
+                {/* Expenses List - Show only latest 5 */}
                 <div className="lg:col-span-2 space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                            Expenses
+                            Recent Expenses
                         </h2>
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                             {expenses.length} {expenses.length === 1 ? "expense" : "expenses"}
@@ -201,7 +201,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                             <CardContent className="flex flex-col items-center py-12">
                                 <Receipt className="h-12 w-12 text-gray-300 dark:text-gray-600" />
                                 <p className="mt-4 text-gray-500 dark:text-gray-400">No expenses yet</p>
-                                <Link href={`/groups/${id}/expenses/new`} className="mt-4">
+                                <Link href={`/groups/${encryptUrlId(id)}/expenses/new`} className="mt-4">
                                     <Button variant="outline" size="sm">
                                         <Plus className="mr-2 h-4 w-4" />
                                         Add First Expense
@@ -211,7 +211,7 @@ export default async function GroupPage({ params }: GroupPageProps) {
                         </Card>
                     ) : (
                         <div className="space-y-3">
-                            {expenses.map((expense) => (
+                            {expenses.slice(0, 5).map((expense) => (
                                 <ExpenseCard
                                     key={expense.id}
                                     expense={expense}
@@ -219,6 +219,13 @@ export default async function GroupPage({ params }: GroupPageProps) {
                                     currency={currency}
                                 />
                             ))}
+                            {expenses.length > 5 && (
+                                <Link href={`/groups/${encryptUrlId(id)}/expenses`}>
+                                    <Button variant="outline" className="w-full">
+                                        View All {expenses.length} Expenses
+                                    </Button>
+                                </Link>
+                            )}
                         </div>
                     )}
                 </div>

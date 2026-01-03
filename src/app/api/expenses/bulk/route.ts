@@ -164,13 +164,7 @@ export async function POST(request: NextRequest) {
                     throw new Error(splitsError.message);
                 }
 
-                // Update group's updated_at
-                await supabase
-                    .from("groups")
-                    .update({ updated_at: new Date().toISOString() })
-                    .eq("id", input.group_id);
-
-                // Log activities
+                // Log activities (fire-and-forget - not critical for response)
                 const activities = createdExpenses.map((expense) => ({
                     user_id: user.id,
                     group_id: input.group_id,
@@ -184,7 +178,22 @@ export async function POST(request: NextRequest) {
                     },
                 }));
 
-                await supabase.from("activities").insert(activities);
+                // Fire-and-forget: Activity logging and group timestamp update
+                // Using async IIFE to handle errors without blocking response
+                (async () => {
+                    try {
+                        await supabase.from("activities").insert(activities);
+                    } catch (err) {
+                        console.error("[Bulk Expenses] Activity logging failed:", err);
+                    }
+                    try {
+                        await supabase.from("groups")
+                            .update({ updated_at: new Date().toISOString() })
+                            .eq("id", input.group_id);
+                    } catch (err) {
+                        console.error("[Bulk Expenses] Group timestamp update failed:", err);
+                    }
+                })();
 
                 return createdExpenses;
             },

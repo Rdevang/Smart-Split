@@ -128,6 +128,49 @@ describe("Analytics Charts", () => {
             expect(screen.getByText("Total")).toBeInTheDocument();
             expect(screen.getByText("₹1000.00")).toBeInTheDocument();
         });
+
+        it("displays category percentages", () => {
+            render(<CategoryChart expenses={mockExpenses} currency="INR" />);
+
+            // Food: 500/1000 = 50%, Transport: 200/1000 = 20%, Entertainment: 300/1000 = 30%
+            expect(screen.getByText("50%")).toBeInTheDocument();
+            expect(screen.getByText("20%")).toBeInTheDocument();
+            expect(screen.getByText("30%")).toBeInTheDocument();
+        });
+
+        it("displays currency amounts for each category", () => {
+            render(<CategoryChart expenses={mockExpenses} currency="INR" />);
+
+            expect(screen.getByText("₹500.00")).toBeInTheDocument();
+            expect(screen.getByText("₹200.00")).toBeInTheDocument();
+            expect(screen.getByText("₹300.00")).toBeInTheDocument();
+        });
+
+        it("renders responsive container", () => {
+            render(<CategoryChart expenses={mockExpenses} currency="INR" />);
+
+            expect(screen.getByTestId("responsive-container")).toBeInTheDocument();
+        });
+
+        it("handles expenses with null category as 'other'", () => {
+            const expensesWithNullCategory = [
+                {
+                    id: "exp-1",
+                    description: "Misc",
+                    amount: 100,
+                    category: null,
+                    expense_date: "2024-01-15",
+                    paid_by: "user-1",
+                    paid_by_profile: { id: "user-1", full_name: "Alice", avatar_url: null },
+                    splits: [],
+                },
+            ];
+
+            render(<CategoryChart expenses={expensesWithNullCategory} currency="INR" />);
+
+            expect(screen.getByText("Other")).toBeInTheDocument();
+            expect(screen.getByText("📦")).toBeInTheDocument();
+        });
     });
 
     describe("TrendChart", () => {

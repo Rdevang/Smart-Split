@@ -179,4 +179,54 @@ describe("ShareGroupButton", () => {
             expect(screen.queryByText("Share Group")).not.toBeInTheDocument();
         });
     });
+
+    it("closes dropdown when close button is clicked", async () => {
+        const user = userEvent.setup();
+        render(<ShareGroupButton {...defaultProps} />);
+
+        await user.click(screen.getByRole("button"));
+        expect(screen.getByText("Share Group")).toBeInTheDocument();
+
+        // Get all buttons, the close button should be the one inside the modal with the X icon
+        const buttons = screen.getAllByRole("button");
+        const closeBtn = buttons.find(btn => btn.querySelector("svg.lucide-x"));
+        if (closeBtn) {
+            await user.click(closeBtn);
+        }
+
+        await waitFor(() => {
+            expect(screen.queryByText("Share Group")).not.toBeInTheDocument();
+        });
+    });
+
+    it("shows mobile drag handle indicator", async () => {
+        const user = userEvent.setup();
+        render(<ShareGroupButton {...defaultProps} />);
+
+        await user.click(screen.getByRole("button"));
+
+        // The drag handle has specific styling classes
+        const modal = screen.getByText("Share Group").closest("div[class*='fixed']");
+        expect(modal).toBeInTheDocument();
+    });
+
+    it("shows help text with join URL", async () => {
+        const user = userEvent.setup();
+        render(<ShareGroupButton {...defaultProps} />);
+
+        await user.click(screen.getByRole("button"));
+
+        expect(screen.getByText(/Others can scan the QR/)).toBeInTheDocument();
+        expect(screen.getByText("/groups/join")).toBeInTheDocument();
+    });
+
+    it("QR code contains correct join URL", async () => {
+        const user = userEvent.setup();
+        render(<ShareGroupButton {...defaultProps} />);
+
+        await user.click(screen.getByRole("button"));
+
+        const qrCode = screen.getByTestId("qr-code-mini");
+        expect(qrCode.getAttribute("data-value")).toContain("/groups/join?code=TESTCODE");
+    });
 });

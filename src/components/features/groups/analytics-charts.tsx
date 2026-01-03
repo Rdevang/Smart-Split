@@ -139,9 +139,9 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
     const activeData = activeIndex !== null ? categoryData[activeIndex] : null;
 
     return (
-        <div className="flex h-[320px] items-center gap-6">
+        <div className="flex flex-col sm:flex-row sm:h-[320px] gap-4 sm:gap-6">
             {/* Donut Chart with Center Label */}
-            <div className="relative h-full w-[200px] flex-shrink-0">
+            <div className="relative h-[200px] sm:h-full w-full sm:w-[200px] flex-shrink-0">
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <defs>
@@ -156,8 +156,8 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                             data={categoryData}
                             cx="50%"
                             cy="50%"
-                            innerRadius={55}
-                            outerRadius={activeIndex !== null ? 95 : 90}
+                            innerRadius={45}
+                            outerRadius={activeIndex !== null ? 80 : 75}
                             paddingAngle={3}
                             dataKey="value"
                             onMouseEnter={(_, idx) => setActiveIndex(idx)}
@@ -193,7 +193,7 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                     ) : (
                         <>
                             <span className="text-xs text-gray-500 dark:text-gray-400">Total</span>
-                            <span className="text-lg font-bold text-gray-900 dark:text-white">
+                            <span className="text-base font-bold text-gray-900 dark:text-white">
                                 {formatCurrency(total, currency)}
                             </span>
                         </>
@@ -201,13 +201,13 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                 </div>
             </div>
 
-            {/* Legend with percentages */}
-            <div className="flex-1 space-y-2 overflow-auto max-h-full pr-2">
+            {/* Legend with percentages - Grid on mobile, list on desktop */}
+            <div className="flex-1 grid grid-cols-2 sm:grid-cols-1 gap-2 sm:space-y-2 sm:block overflow-auto sm:max-h-full sm:pr-2">
                 {categoryData.map((item, idx) => (
                     <div
                         key={idx}
                         className={cn(
-                            "flex items-center gap-3 rounded-lg p-2 transition-all cursor-pointer",
+                            "flex items-center gap-2 sm:gap-3 rounded-lg p-2 transition-all cursor-pointer",
                             activeIndex === idx
                                 ? "bg-gray-100 dark:bg-gray-800"
                                 : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
@@ -219,17 +219,17 @@ export function CategoryChart({ expenses, currency }: CategoryChartProps) {
                             className="h-3 w-3 flex-shrink-0 rounded-full"
                             style={{ backgroundColor: item.color }}
                         />
-                        <span className="text-xl">{item.emoji}</span>
+                        <span className="text-lg sm:text-xl">{item.emoji}</span>
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
                                 {item.label}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                            <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
                                 {formatCurrency(item.value, currency)}
                             </p>
                         </div>
-                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            {item.percentage.toFixed(1)}%
+                        <span className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            {item.percentage.toFixed(0)}%
                         </span>
                     </div>
                 ))}
@@ -272,14 +272,14 @@ export function TrendChart({ expenses, currency }: TrendChartProps) {
             const midpoint = Math.floor(sortedData.length / 2);
             const firstHalfData = sortedData.slice(0, midpoint);
             const secondHalfData = sortedData.slice(midpoint);
-            
-            const firstHalfAvg = firstHalfData.length > 0 
-                ? firstHalfData.reduce((sum, d) => sum + d.amount, 0) / firstHalfData.length 
+
+            const firstHalfAvg = firstHalfData.length > 0
+                ? firstHalfData.reduce((sum, d) => sum + d.amount, 0) / firstHalfData.length
                 : 0;
-            const secondHalfAvg = secondHalfData.length > 0 
-                ? secondHalfData.reduce((sum, d) => sum + d.amount, 0) / secondHalfData.length 
+            const secondHalfAvg = secondHalfData.length > 0
+                ? secondHalfData.reduce((sum, d) => sum + d.amount, 0) / secondHalfData.length
                 : 0;
-            
+
             if (firstHalfAvg > 0) {
                 trendValue = ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100;
             }
