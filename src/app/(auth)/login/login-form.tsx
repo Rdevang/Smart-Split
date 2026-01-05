@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { login, signInWithGoogle, signInWithGithub } from "../actions";
+import { useRecaptcha } from "@/hooks/use-recaptcha";
 
 const loginSchema = z.object({
     email: z.string().email("Please enter a valid email address"),
@@ -39,6 +40,7 @@ export function LoginForm({ csrfToken }: LoginFormProps) {
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [isGithubLoading, setIsGithubLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { executeRecaptcha, isEnabled: recaptchaEnabled } = useRecaptcha();
 
     // Get URL error from search params
     const urlError = useMemo(() => {
@@ -71,10 +73,19 @@ export function LoginForm({ csrfToken }: LoginFormProps) {
         setIsLoading(true);
         setError(null);
 
+        // Execute reCAPTCHA if enabled
+        let recaptchaToken: string | null = null;
+        if (recaptchaEnabled) {
+            recaptchaToken = await executeRecaptcha("login");
+        }
+
         const formData = new FormData();
         formData.append("email", data.email);
         formData.append("password", data.password);
-        formData.append("csrf_token", csrfToken); // Include CSRF token
+        formData.append("csrf_token", csrfToken);
+        if (recaptchaToken) {
+            formData.append("recaptcha_token", recaptchaToken);
+        }
 
         const result = await login(formData);
 

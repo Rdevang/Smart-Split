@@ -12,6 +12,7 @@ import {
 import { logger, SecurityEvents } from "@/lib/logger";
 import { validateCsrfToken } from "@/lib/csrf";
 import { getGenericAuthError } from "@/lib/auth-errors";
+import { validateRecaptchaFromForm } from "@/lib/recaptcha";
 
 /**
  * Gets the site URL, detecting localhost and Vercel preview environments automatically
@@ -64,6 +65,18 @@ export async function login(formData: FormData) {
     const csrfError = await checkCsrf(formData);
     if (csrfError) {
         return { error: csrfError };
+    }
+
+    // reCAPTCHA Verification
+    const recaptchaResult = await validateRecaptchaFromForm(formData, "login");
+    if (!recaptchaResult.success) {
+        logger.security(
+            SecurityEvents.LOGIN_FAILURE,
+            "medium",
+            "blocked",
+            { reason: "recaptcha_failed", error: recaptchaResult.error }
+        );
+        return { error: recaptchaResult.error || "Security verification failed" };
     }
 
     const supabase = await createClient();
@@ -143,6 +156,18 @@ export async function register(formData: FormData) {
     const csrfError = await checkCsrf(formData);
     if (csrfError) {
         return { error: csrfError };
+    }
+
+    // reCAPTCHA Verification
+    const recaptchaResult = await validateRecaptchaFromForm(formData, "register");
+    if (!recaptchaResult.success) {
+        logger.security(
+            SecurityEvents.ACCOUNT_CREATION_ATTEMPT,
+            "medium",
+            "blocked",
+            { reason: "recaptcha_failed", error: recaptchaResult.error }
+        );
+        return { error: recaptchaResult.error || "Security verification failed" };
     }
 
     const supabase = await createClient();
@@ -286,6 +311,18 @@ export async function forgotPassword(formData: FormData) {
     const csrfError = await checkCsrf(formData);
     if (csrfError) {
         return { error: csrfError };
+    }
+
+    // reCAPTCHA Verification
+    const recaptchaResult = await validateRecaptchaFromForm(formData, "forgot_password");
+    if (!recaptchaResult.success) {
+        logger.security(
+            SecurityEvents.PASSWORD_RESET_REQUEST,
+            "medium",
+            "blocked",
+            { reason: "recaptcha_failed", error: recaptchaResult.error }
+        );
+        return { error: recaptchaResult.error || "Security verification failed" };
     }
 
     const supabase = await createClient();

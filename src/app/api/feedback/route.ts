@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sanitizeForDb, stripHtml, sanitizeUrl } from "@/lib/validation";
 import { checkRateLimit, getClientIP, createRateLimitHeaders } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { verifyRecaptcha } from "@/lib/recaptcha";
 
 // ============================================
 // GET - Fetch user's feedback submissions
@@ -96,7 +97,21 @@ export async function POST(request: NextRequest) {
             user_id,
             user_agent,
             page_url,
+            recaptcha_token,
         } = body;
+
+        // reCAPTCHA Verification (checks if enabled in settings)
+        const recaptchaResult = await verifyRecaptcha(recaptcha_token, "feedback", !!user_id);
+        if (!recaptchaResult.success) {
+            logger.warn("Feedback submission blocked by reCAPTCHA", {
+                error: recaptchaResult.error,
+                score: recaptchaResult.score,
+            });
+            return NextResponse.json(
+                { error: recaptchaResult.error || "Security verification failed" },
+                { status: 400 }
+            );
+        }
 
         // Validate required fields
         if (!type || !title || !description) {
@@ -242,7 +257,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: type === "review" 
+            message: type === "review"
                 ? "Thank you for your review! It will be visible after approval."
                 : "Feedback submitted successfully",
         });

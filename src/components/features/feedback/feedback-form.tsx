@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/components/ui/toast";
 import { Link } from "@/components/ui/link";
 import { cn } from "@/lib/utils";
+import { useRecaptcha } from "@/hooks/use-recaptcha";
 
 const feedbackSchema = z.object({
     type: z.enum(["suggestion", "feature_request", "bug_report", "review", "other"]),
@@ -56,6 +57,7 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
     const [selectedType, setSelectedType] = useState<string>("suggestion");
     const [rating, setRating] = useState(5);
     const [hoverRating, setHoverRating] = useState(0);
+    const { executeRecaptcha, isEnabled: recaptchaEnabled } = useRecaptcha();
 
     const {
         register,
@@ -87,6 +89,12 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
         setIsSubmitting(true);
 
         try {
+            // Execute reCAPTCHA if enabled
+            let recaptchaToken: string | null = null;
+            if (recaptchaEnabled) {
+                recaptchaToken = await executeRecaptcha("feedback");
+            }
+
             const response = await fetch("/api/feedback", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -96,6 +104,7 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
                     user_id: user?.id || null,
                     user_agent: navigator.userAgent,
                     page_url: window.location.href,
+                    recaptcha_token: recaptchaToken,
                 }),
             });
 
@@ -144,13 +153,13 @@ export function FeedbackForm({ user }: FeedbackFormProps) {
             <CardHeader className="space-y-4">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-1">
-                <CardTitle className="flex items-center gap-2">
-                    <MessageSquarePlus className="h-6 w-6 text-teal-500" />
-                    Share Your Feedback
-                </CardTitle>
-                <CardDescription>
-                    Help us improve Smart Split! Report bugs, suggest features, or share your ideas.
-                </CardDescription>
+                        <CardTitle className="flex items-center gap-2">
+                            <MessageSquarePlus className="h-6 w-6 text-teal-500" />
+                            Share Your Feedback
+                        </CardTitle>
+                        <CardDescription>
+                            Help us improve Smart Split! Report bugs, suggest features, or share your ideas.
+                        </CardDescription>
                     </div>
                     {user && (
                         <Link href="/feedback/history" className="self-start">

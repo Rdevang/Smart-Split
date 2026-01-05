@@ -11,6 +11,7 @@ const adminNavItems = [
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
     { href: "/admin/rate-limits", label: "Rate Limits", icon: Gauge },
+    { href: "/admin/settings", label: "Settings", icon: Shield },
 ];
 
 interface AdminLayoutClientProps {

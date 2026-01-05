@@ -12,6 +12,7 @@ import {
     signInWithGoogle,
     signInWithGithub,
 } from "../actions";
+import { useRecaptcha } from "@/hooks/use-recaptcha";
 
 // ============================================
 // PASSWORD SECURITY REQUIREMENTS
@@ -58,6 +59,7 @@ export function RegisterForm({ csrfToken }: RegisterFormProps) {
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [isGithubLoading, setIsGithubLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { executeRecaptcha, isEnabled: recaptchaEnabled } = useRecaptcha();
 
     const {
         register,
@@ -71,11 +73,20 @@ export function RegisterForm({ csrfToken }: RegisterFormProps) {
         setIsLoading(true);
         setError(null);
 
+        // Execute reCAPTCHA if enabled
+        let recaptchaToken: string | null = null;
+        if (recaptchaEnabled) {
+            recaptchaToken = await executeRecaptcha("register");
+        }
+
         const formData = new FormData();
         formData.append("full_name", data.full_name);
         formData.append("email", data.email);
         formData.append("password", data.password);
-        formData.append("csrf_token", csrfToken); // Include CSRF token
+        formData.append("csrf_token", csrfToken);
+        if (recaptchaToken) {
+            formData.append("recaptcha_token", recaptchaToken);
+        }
 
         const result = await registerUser(formData);
 

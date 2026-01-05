@@ -8,6 +8,7 @@ import { z } from "zod";
 import { Mail, ArrowLeft, CheckCircle } from "lucide-react";
 import { Button, Input } from "@/components/ui";
 import { forgotPassword } from "../actions";
+import { useRecaptcha } from "@/hooks/use-recaptcha";
 
 const forgotPasswordSchema = z.object({
     email: z.string().email("Please enter a valid email address"),
@@ -23,6 +24,7 @@ export function ForgotPasswordForm({ csrfToken }: ForgotPasswordFormProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isSuccess, setIsSuccess] = useState(false);
+    const { executeRecaptcha, isEnabled: recaptchaEnabled } = useRecaptcha();
 
     const {
         register,
@@ -37,9 +39,18 @@ export function ForgotPasswordForm({ csrfToken }: ForgotPasswordFormProps) {
         setIsLoading(true);
         setError(null);
 
+        // Execute reCAPTCHA if enabled
+        let recaptchaToken: string | null = null;
+        if (recaptchaEnabled) {
+            recaptchaToken = await executeRecaptcha("forgot_password");
+        }
+
         const formData = new FormData();
         formData.append("email", data.email);
-        formData.append("csrf_token", csrfToken); // Include CSRF token
+        formData.append("csrf_token", csrfToken);
+        if (recaptchaToken) {
+            formData.append("recaptcha_token", recaptchaToken);
+        }
 
         const result = await forgotPassword(formData);
 
