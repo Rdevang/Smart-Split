@@ -47,10 +47,18 @@ declare global {
 // ============================================
 
 const SCRIPT_ID = "recaptcha-v3-script";
+const DEBUG = process.env.NODE_ENV === "development";
 
 // Module-level state to prevent multiple script loads
 let scriptLoadPromise: Promise<void> | null = null;
 let isScriptLoaded = false;
+
+// Debug logger
+function debugLog(message: string, data?: unknown) {
+    if (DEBUG) {
+        console.log(`[reCAPTCHA] ${message}`, data ?? "");
+    }
+}
 
 // ============================================
 // HOOK
@@ -70,18 +78,23 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
         mountedRef.current = true;
 
         async function checkEnabled() {
+            debugLog("Checking if reCAPTCHA is enabled...");
             try {
                 const response = await fetch("/api/settings/recaptcha");
                 if (!response.ok) {
                     throw new Error("Failed to fetch reCAPTCHA settings");
                 }
                 const data = await response.json();
+                debugLog("Settings response:", data);
 
                 if (mountedRef.current) {
                     setIsEnabled(data.enabled);
                     if (!data.enabled) {
+                        debugLog("reCAPTCHA is DISABLED in admin settings");
                         setIsLoading(false);
                         setIsReady(true); // Ready to skip
+                    } else {
+                        debugLog("reCAPTCHA is ENABLED, will load script");
                     }
                 }
             } catch (err) {
@@ -90,7 +103,7 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
                     setIsEnabled(false);
                     setIsLoading(false);
                     setIsReady(true);
-                    console.warn("Could not fetch reCAPTCHA settings:", err);
+                    console.warn("[reCAPTCHA] Could not fetch settings:", err);
                 }
             }
         }
@@ -107,13 +120,17 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
         if (!isEnabled) return;
 
         if (!siteKey) {
+            debugLog("ERROR: Site key not configured");
             setError("reCAPTCHA site key not configured");
             setIsLoading(false);
             return;
         }
 
+        debugLog("Site key found:", siteKey.substring(0, 10) + "...");
+
         // If already loaded, mark as ready
         if (isScriptLoaded && window.grecaptcha) {
+            debugLog("Script already loaded, marking ready");
             window.grecaptcha.ready(() => {
                 if (mountedRef.current) {
                     setIsReady(true);
@@ -125,9 +142,11 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
 
         // Load script if not already loading
         if (!scriptLoadPromise) {
+            debugLog("Loading reCAPTCHA script...");
             scriptLoadPromise = new Promise((resolve, reject) => {
                 // Check if script already exists
                 if (document.getElementById(SCRIPT_ID)) {
+                    debugLog("Script element already exists");
                     resolve();
                     return;
                 }
@@ -139,11 +158,13 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
                 script.defer = true;
 
                 script.onload = () => {
+                    debugLog("✅ Script loaded successfully");
                     isScriptLoaded = true;
                     resolve();
                 };
 
-                script.onerror = () => {
+                script.onerror = (e) => {
+                    debugLog("❌ Script load failed", e);
                     reject(new Error("Failed to load reCAPTCHA script"));
                 };
 
@@ -155,6 +176,7 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
             .then(() => {
                 if (window.grecaptcha) {
                     window.grecaptcha.ready(() => {
+                        debugLog("✅ grecaptcha ready!");
                         if (mountedRef.current) {
                             setIsReady(true);
                             setIsLoading(false);
@@ -163,6 +185,7 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
                 }
             })
             .catch((err) => {
+                debugLog("❌ Script load error:", err);
                 if (mountedRef.current) {
                     setError(err.message);
                     setIsLoading(false);
@@ -173,26 +196,34 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
     // Execute reCAPTCHA
     const executeRecaptcha = useCallback(
         async (action: string): Promise<string | null> => {
+            debugLog(`Executing reCAPTCHA for action: "${action}"`);
+            debugLog(`State: isEnabled=${isEnabled}, isReady=${isReady}, hasSiteKey=${!!siteKey}`);
+
             // If not enabled, return null (server will skip verification)
             if (!isEnabled) {
+                debugLog("⏭️ Skipping - reCAPTCHA disabled");
                 return null;
             }
 
             if (!siteKey) {
-                console.error("reCAPTCHA site key not configured");
+                console.error("[reCAPTCHA] Site key not configured");
                 return null;
             }
 
             if (!isReady || !window.grecaptcha) {
-                console.error("reCAPTCHA not ready");
+                console.error("[reCAPTCHA] Not ready yet. isReady:", isReady, "grecaptcha:", !!window.grecaptcha);
                 return null;
             }
 
             try {
+                debugLog("Requesting token from Google...");
+                const startTime = Date.now();
                 const token = await window.grecaptcha.execute(siteKey, { action });
+                const duration = Date.now() - startTime;
+                debugLog(`✅ Token received in ${duration}ms:`, token.substring(0, 30) + "...");
                 return token;
             } catch (err) {
-                console.error("reCAPTCHA execution failed:", err);
+                console.error("[reCAPTCHA] Execution failed:", err);
                 return null;
             }
         },

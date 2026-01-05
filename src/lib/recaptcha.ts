@@ -129,31 +129,42 @@ export async function verifyRecaptcha(
     expectedAction: string,
     isAuthenticated = false
 ): Promise<RecaptchaVerifyResult> {
+    logger.info("[reCAPTCHA] Starting verification", { action: expectedAction, hasToken: !!token, isAuthenticated });
+
     // Get current settings
     const settings = await getRecaptchaSettings();
+    logger.info("[reCAPTCHA] Settings loaded", {
+        enabled: settings.is_enabled,
+        threshold: settings.score_threshold,
+        actions: settings.actions,
+        bypassAuth: settings.bypass_for_authenticated,
+    });
 
     // Check if reCAPTCHA is enabled
     if (!settings.is_enabled) {
+        logger.info("[reCAPTCHA] ⏭️ SKIPPED - Disabled in settings");
         return { success: true, skipped: true };
     }
 
     // Check if we should bypass for authenticated users
     if (isAuthenticated && settings.bypass_for_authenticated) {
+        logger.info("[reCAPTCHA] ⏭️ SKIPPED - Bypassed for authenticated user");
         return { success: true, skipped: true };
     }
 
     // Check if action is in the list of protected actions
     if (!settings.actions.includes(expectedAction)) {
+        logger.info("[reCAPTCHA] ⏭️ SKIPPED - Action not in protected list", { expectedAction, protectedActions: settings.actions });
         return { success: true, skipped: true };
     }
 
     // Validate environment variables
     const secretKey = process.env.RECAPTCHA_SECRET_KEY;
     if (!secretKey) {
-        logger.error("RECAPTCHA_SECRET_KEY not configured");
+        logger.error("[reCAPTCHA] ❌ RECAPTCHA_SECRET_KEY not configured");
         // Fail open in development, fail closed in production
         if (process.env.NODE_ENV === "development") {
-            logger.warn("reCAPTCHA verification skipped in development (missing secret key)");
+            logger.warn("[reCAPTCHA] ⚠️ Verification skipped in development (missing secret key)");
             return { success: true, skipped: true };
         }
         return { success: false, error: "reCAPTCHA configuration error" };
@@ -161,11 +172,15 @@ export async function verifyRecaptcha(
 
     // Validate token exists
     if (!token) {
+        logger.warn("[reCAPTCHA] ❌ Token is missing");
         return { success: false, error: "reCAPTCHA token is required" };
     }
 
+    logger.info("[reCAPTCHA] Token received, verifying with Google...", { tokenLength: token.length });
+
     try {
         // Verify with Google
+        const startTime = Date.now();
         const response = await fetch(RECAPTCHA_VERIFY_URL, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -174,26 +189,31 @@ export async function verifyRecaptcha(
                 response: token,
             }),
         });
+        const duration = Date.now() - startTime;
 
         if (!response.ok) {
-            logger.error("reCAPTCHA API request failed", new Error(`HTTP ${response.status}`));
+            logger.error("[reCAPTCHA] ❌ Google API request failed", new Error(`HTTP ${response.status}`));
             return { success: false, error: "reCAPTCHA verification failed" };
         }
 
         const result = await response.json();
 
-        // Log for debugging (without sensitive data)
-        logger.debug("reCAPTCHA verification result", {
+        // Log full result for debugging
+        logger.info("[reCAPTCHA] Google API response", {
             success: result.success,
             score: result.score,
             action: result.action,
             expectedAction,
+            hostname: result.hostname,
+            challengeTs: result.challenge_ts,
+            errorCodes: result["error-codes"],
+            duration: `${duration}ms`,
         });
 
         // Check success
         if (!result.success) {
             const errorCodes = result["error-codes"] || [];
-            logger.warn("reCAPTCHA verification failed", { errorCodes });
+            logger.warn("[reCAPTCHA] ❌ Verification FAILED", { errorCodes });
             return {
                 success: false,
                 error: "reCAPTCHA verification failed. Please try again.",
@@ -202,7 +222,7 @@ export async function verifyRecaptcha(
 
         // Verify action matches (prevents token reuse across different forms)
         if (result.action && result.action !== expectedAction) {
-            logger.warn("reCAPTCHA action mismatch", {
+            logger.warn("[reCAPTCHA] ❌ Action MISMATCH", {
                 expected: expectedAction,
                 received: result.action,
             });
@@ -214,7 +234,7 @@ export async function verifyRecaptcha(
 
         // Check score threshold
         if (typeof result.score === "number" && result.score < settings.score_threshold) {
-            logger.warn("reCAPTCHA score below threshold", {
+            logger.warn("[reCAPTCHA] ❌ Score BELOW threshold", {
                 score: result.score,
                 threshold: settings.score_threshold,
             });
@@ -225,13 +245,15 @@ export async function verifyRecaptcha(
             };
         }
 
+        logger.info("[reCAPTCHA] ✅ Verification PASSED", { score: result.score, action: result.action });
+
         return {
             success: true,
             score: result.score,
             action: result.action,
         };
     } catch (err) {
-        logger.error("reCAPTCHA verification error", err instanceof Error ? err : new Error(String(err)));
+        logger.error("[reCAPTCHA] ❌ Verification error", err instanceof Error ? err : new Error(String(err)));
         return { success: false, error: "reCAPTCHA verification error" };
     }
 }
