@@ -39,11 +39,12 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://va.vercel-scripts.com", // Required for Next.js + Google Analytics/GTM + Vercel Analytics
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://va.vercel-scripts.com https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/", // Required for Next.js + Google Analytics/GTM + Vercel Analytics + reCAPTCHA
       "style-src 'self' 'unsafe-inline'", // Required for Tailwind
-      "img-src 'self' data: blob: https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://cizakzarkdgieclbwljy.supabase.co https://www.googletagmanager.com https://www.google-analytics.com",
+      "img-src 'self' data: blob: https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://cizakzarkdgieclbwljy.supabase.co https://www.googletagmanager.com https://www.google-analytics.com https://www.gstatic.com/recaptcha/",
       "font-src 'self'",
-      "connect-src 'self' https://cizakzarkdgieclbwljy.supabase.co wss://cizakzarkdgieclbwljy.supabase.co https://*.upstash.io https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://photon.komoot.io https://va.vercel-scripts.com https://vitals.vercel-insights.com",
+      "connect-src 'self' https://cizakzarkdgieclbwljy.supabase.co wss://cizakzarkdgieclbwljy.supabase.co https://*.upstash.io https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://photon.komoot.io https://va.vercel-scripts.com https://vitals.vercel-insights.com https://www.google.com/recaptcha/",
+      "frame-src https://www.google.com/recaptcha/ https://recaptcha.google.com/", // Required for reCAPTCHA iframe
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",
