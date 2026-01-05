@@ -13,6 +13,7 @@ import {
     signInWithGithub,
 } from "../actions";
 import { useRecaptcha } from "@/hooks/use-recaptcha";
+import { useCsrf } from "@/hooks/use-csrf";
 
 // ============================================
 // PASSWORD SECURITY REQUIREMENTS
@@ -60,6 +61,7 @@ export function RegisterForm({ csrfToken }: RegisterFormProps) {
     const [isGithubLoading, setIsGithubLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { executeRecaptcha, isEnabled: recaptchaEnabled } = useRecaptcha();
+    const { refreshToken } = useCsrf(csrfToken);
 
     const {
         register,
@@ -73,6 +75,9 @@ export function RegisterForm({ csrfToken }: RegisterFormProps) {
         setIsLoading(true);
         setError(null);
 
+        // Get fresh CSRF token to prevent expiration issues
+        const freshCsrfToken = await refreshToken();
+
         // Execute reCAPTCHA if enabled
         let recaptchaToken: string | null = null;
         if (recaptchaEnabled) {
@@ -83,7 +88,7 @@ export function RegisterForm({ csrfToken }: RegisterFormProps) {
         formData.append("full_name", data.full_name);
         formData.append("email", data.email);
         formData.append("password", data.password);
-        formData.append("csrf_token", csrfToken);
+        formData.append("csrf_token", freshCsrfToken);
         if (recaptchaToken) {
             formData.append("recaptcha_token", recaptchaToken);
         }
