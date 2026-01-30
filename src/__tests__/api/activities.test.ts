@@ -37,13 +37,15 @@ jest.mock("@/lib/url-ids", () => ({
 }));
 
 // Helper to create mock request
-function createMockRequest(url: string) {
+import type { NextRequest } from "next/server";
+
+function createMockRequest(url: string): NextRequest {
     const parsedUrl = new URL(url);
     return {
         nextUrl: {
             searchParams: parsedUrl.searchParams,
         },
-    };
+    } as unknown as NextRequest;
 }
 
 // Import after mocks

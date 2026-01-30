@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
+import { getSettlementsWithNamesCore, type SettlementWithNames } from "@/services/shared/settlements";
 
 type Group = Database["public"]["Tables"]["groups"]["Row"];
 type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
@@ -371,124 +372,8 @@ export const groupsServerService = {
     /**
      * Get settlements with user names for a group
      */
-    async getSettlementsWithNames(groupId: string): Promise<{
-        id: string;
-        from_user: string;
-        from_user_name: string;
-        to_user: string;
-        to_user_name: string;
-        amount: number;
-        settled_at: string;
-        note: string | null;
-        status?: string;
-    }[]> {
+    async getSettlementsWithNames(groupId: string): Promise<SettlementWithNames[]> {
         const supabase = await createClient();
-
-        const { data, error } = await supabase
-            .from("settlements")
-            .select(`
-                id,
-                from_user,
-                to_user,
-                from_placeholder_id,
-                to_placeholder_id,
-                amount,
-                settled_at,
-                requested_at,
-                note,
-                status,
-                from_profile:profiles!settlements_from_user_fkey(id, full_name, email),
-                to_profile:profiles!settlements_to_user_fkey(id, full_name, email),
-                from_placeholder:placeholder_members!settlements_from_placeholder_id_fkey(id, name),
-                to_placeholder:placeholder_members!settlements_to_placeholder_id_fkey(id, name)
-            `)
-            .eq("group_id", groupId)
-            .eq("status", "approved") // Only show approved settlements in history
-            .order("settled_at", { ascending: false, nullsFirst: false })
-            .order("requested_at", { ascending: false });
-
-        if (error) {
-            console.error("Error fetching settlements with names:", error);
-            return [];
-        }
-
-        type ProfileData = { full_name: string | null; email: string };
-        type PlaceholderData = { id: string; name: string };
-
-        // Collect IDs that need placeholder lookup (profile join returned null)
-        const placeholderIdsToLookup: string[] = [];
-        (data || []).forEach((s) => {
-            const fromProfile = s.from_profile as unknown as ProfileData | null;
-            const toProfile = s.to_profile as unknown as ProfileData | null;
-            const fromPlaceholder = s.from_placeholder as unknown as PlaceholderData | null;
-            const toPlaceholder = s.to_placeholder as unknown as PlaceholderData | null;
-
-            // If from_user has no profile AND no placeholder, it might be an old record with placeholder ID in from_user
-            if (s.from_user && !fromProfile?.full_name && !fromProfile?.email && !fromPlaceholder?.name) {
-                placeholderIdsToLookup.push(s.from_user);
-            }
-            // Same for to_user
-            if (s.to_user && !toProfile?.full_name && !toProfile?.email && !toPlaceholder?.name) {
-                placeholderIdsToLookup.push(s.to_user);
-            }
-        });
-
-        // Fetch placeholder names for old records that stored placeholder ID in from_user/to_user
-        const placeholderNameMap = new Map<string, string>();
-        if (placeholderIdsToLookup.length > 0) {
-            const { data: placeholders } = await supabase
-                .from("placeholder_members")
-                .select("id, name")
-                .in("id", placeholderIdsToLookup);
-
-            (placeholders || []).forEach((p) => {
-                placeholderNameMap.set(p.id, p.name);
-            });
-        }
-
-        return (data || []).map((s) => {
-            // Handle both real users and placeholders
-            const fromProfile = s.from_profile as unknown as ProfileData | null;
-            const toProfile = s.to_profile as unknown as ProfileData | null;
-            const fromPlaceholder = s.from_placeholder as unknown as PlaceholderData | null;
-            const toPlaceholder = s.to_placeholder as unknown as PlaceholderData | null;
-
-            // Determine names - check placeholder first, then profile, then fallback lookup
-            const fromName = fromPlaceholder?.name
-                || fromProfile?.full_name
-                || fromProfile?.email
-                || placeholderNameMap.get(s.from_user) // Fallback for old records
-                || "Unknown";
-            const toName = toPlaceholder?.name
-                || toProfile?.full_name
-                || toProfile?.email
-                || placeholderNameMap.get(s.to_user) // Fallback for old records
-                || "Unknown";
-
-            // Check if this involves a placeholder (should be auto-approved)
-            const involvesPlaceholder = !!fromPlaceholder?.name
-                || !!toPlaceholder?.name
-                || placeholderNameMap.has(s.from_user)
-                || placeholderNameMap.has(s.to_user)
-                || !!s.from_placeholder_id
-                || !!s.to_placeholder_id;
-
-            // Auto-approve settlements involving placeholders (they can't respond)
-            const effectiveStatus = (s.status === "pending" && involvesPlaceholder)
-                ? "approved"
-                : s.status;
-
-            return {
-                id: s.id,
-                from_user: s.from_user || s.from_placeholder_id || "",
-                from_user_name: fromName,
-                to_user: s.to_user || s.to_placeholder_id || "",
-                to_user_name: toName,
-                amount: s.amount,
-                settled_at: s.settled_at || s.requested_at || new Date().toISOString(),
-                note: s.note,
-                status: effectiveStatus,
-            };
-        });
+        return getSettlementsWithNamesCore(supabase, groupId);
     },
 };

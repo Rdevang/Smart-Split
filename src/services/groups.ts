@@ -4,87 +4,14 @@ import type { Database } from "@/types/database";
 import { ValidationSchemas, sanitizeForDb, stripHtml } from "@/lib/validation";
 import { checkRateLimit, getClientIP } from "@/lib/rate-limit";
 import { logger, SecurityEvents } from "@/lib/logger";
+import { getSettlementsWithNamesCore, type SettlementWithNames } from "@/services/shared/settlements";
+import { verifyGroupAccess, getGroupMembership } from "@/lib/auth-helpers";
+import { logActivity, ActivityTypes } from "@/lib/activity-logger";
 
 type Group = Database["public"]["Tables"]["groups"]["Row"];
 type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type MemberRole = Database["public"]["Enums"]["member_role"];
-
-// ============================================
-// AUTHORIZATION HELPERS (IDOR Prevention)
-// ============================================
-
-interface MembershipInfo {
-    isMember: boolean;
-    role: MemberRole | null;
-    isAdmin: boolean;
-}
-
-/**
- * Verify user is a member of the specified group and get their role
- * Used for authorization checks before sensitive operations
- */
-async function getGroupMembership(groupId: string, userId: string): Promise<MembershipInfo> {
-    const supabase = createClient();
-    
-    // Validate inputs
-    if (!ValidationSchemas.uuid.safeParse(groupId).success || 
-        !ValidationSchemas.uuid.safeParse(userId).success) {
-        return { isMember: false, role: null, isAdmin: false };
-    }
-    
-    const { data } = await supabase
-        .from("group_members")
-        .select("role")
-        .eq("group_id", groupId)
-        .eq("user_id", userId)
-        .single();
-    
-    if (!data) {
-        return { isMember: false, role: null, isAdmin: false };
-    }
-    
-    return { 
-        isMember: true, 
-        role: data.role as MemberRole,
-        isAdmin: data.role === "admin"
-    };
-}
-
-/**
- * Verify user has access to a group
- * Logs security events for unauthorized access attempts
- */
-async function verifyGroupAccess(
-    groupId: string, 
-    userId: string, 
-    requiredRole: "member" | "admin" = "member",
-    action: string
-): Promise<{ success: boolean; membership?: MembershipInfo; error?: string }> {
-    const membership = await getGroupMembership(groupId, userId);
-    
-    if (!membership.isMember) {
-        logger.security(
-            SecurityEvents.ACCESS_DENIED,
-            "medium",
-            "blocked",
-            { userId, groupId, action, reason: "not_group_member" }
-        );
-        return { success: false, error: "Group not found or access denied" };
-    }
-    
-    if (requiredRole === "admin" && !membership.isAdmin) {
-        logger.security(
-            SecurityEvents.ACCESS_DENIED,
-            "medium",
-            "blocked",
-            { userId, groupId, action, reason: "not_admin", currentRole: membership.role }
-        );
-        return { success: false, error: "Admin access required" };
-    }
-    
-    return { success: true, membership };
-}
 
 export interface GroupWithMembers extends Group {
     members: (GroupMember & { profile: Profile })[];
@@ -229,13 +156,12 @@ export const groupsService = {
         }
 
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: userId,
-            group_id: group.id,
-            entity_type: "group",
-            entity_id: group.id,
-            action: "created",
-            metadata: { group_name: group.name },
+        await logActivity(supabase, {
+            userId,
+            groupId: group.id,
+            action: ActivityTypes.GROUP_CREATED,
+            details: { group_name: group.name },
+            metadata: { entity_type: "group", entity_id: group.id },
         });
 
         return { group };
@@ -251,9 +177,9 @@ export const groupsService = {
         updatedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
-        
+
         // SECURITY: Verify user is an admin of this group
-        const accessCheck = await verifyGroupAccess(groupId, updatedBy, "admin", "update_group");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, updatedBy, "admin", "update_group");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
@@ -269,15 +195,13 @@ export const groupsService = {
         if (error) {
             return { success: false, error: error.message };
         }
-        
+
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: updatedBy,
-            group_id: groupId,
-            entity_type: "group",
-            entity_id: groupId,
-            action: "updated",
-            metadata: { changes: Object.keys(input) },
+        await logActivity(supabase, {
+            userId: updatedBy,
+            groupId,
+            action: ActivityTypes.GROUP_UPDATED,
+            metadata: { entity_type: "group", entity_id: groupId, changes: Object.keys(input) },
         });
 
         return { success: true };
@@ -289,13 +213,13 @@ export const groupsService = {
      * SECURITY: Requires admin role for the group (IDOR prevention)
      */
     async deleteGroup(
-        groupId: string, 
+        groupId: string,
         deletedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
-        
+
         // SECURITY: Verify user is an admin of this group
-        const accessCheck = await verifyGroupAccess(groupId, deletedBy, "admin", "delete_group");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, deletedBy, "admin", "delete_group");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
@@ -334,15 +258,14 @@ export const groupsService = {
                 .update({ deleted_at: new Date().toISOString() })
                 .eq("group_id", groupId);
         }
-        
+
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: deletedBy,
-            group_id: groupId,
-            entity_type: "group",
-            entity_id: groupId,
-            action: "deleted",
-            metadata: { group_name: group?.name },
+        await logActivity(supabase, {
+            userId: deletedBy,
+            groupId,
+            action: ActivityTypes.GROUP_DELETED,
+            details: { group_name: group?.name },
+            metadata: { entity_type: "group", entity_id: groupId },
         });
 
         return { success: true };
@@ -398,14 +321,14 @@ export const groupsService = {
      * SECURITY: Requires admin role (IDOR prevention)
      */
     async restoreGroup(
-        groupId: string, 
+        groupId: string,
         restoredBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
-        
+
         // SECURITY: Verify user was an admin of this group
         // Note: We check membership differently for deleted groups
-        const accessCheck = await verifyGroupAccess(groupId, restoredBy, "admin", "restore_group");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, restoredBy, "admin", "restore_group");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
@@ -417,15 +340,13 @@ export const groupsService = {
         if (error) {
             return { success: false, error: error.message };
         }
-        
+
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: restoredBy,
-            group_id: groupId,
-            entity_type: "group",
-            entity_id: groupId,
-            action: "restored",
-            metadata: {},
+        await logActivity(supabase, {
+            userId: restoredBy,
+            groupId,
+            action: ActivityTypes.GROUP_RESTORED,
+            metadata: { entity_type: "group", entity_id: groupId },
         });
 
         return { success: true };
@@ -441,9 +362,9 @@ export const groupsService = {
         addedBy: string
     ): Promise<{ success: boolean; error?: string; inviteSent?: boolean }> {
         const supabase = createClient();
-        
+
         // SECURITY: Verify user is a member of this group
-        const accessCheck = await verifyGroupAccess(groupId, addedBy, "member", "add_member");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, addedBy, "member", "add_member");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
@@ -505,9 +426,9 @@ export const groupsService = {
         addedBy: string
     ): Promise<{ success: boolean; error?: string; placeholderId?: string }> {
         const supabase = createClient();
-        
+
         // SECURITY: Verify user is a member of this group
-        const accessCheck = await verifyGroupAccess(groupId, addedBy, "member", "add_placeholder_member");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, addedBy, "member", "add_placeholder_member");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
@@ -572,13 +493,12 @@ export const groupsService = {
         }
 
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: addedBy,
-            group_id: groupId,
-            entity_type: "member",
-            entity_id: placeholder.id,
-            action: "added",
-            metadata: { member_name: name, is_placeholder: true },
+        await logActivity(supabase, {
+            userId: addedBy,
+            groupId,
+            action: ActivityTypes.PLACEHOLDER_ADDED,
+            details: { member_name: name },
+            metadata: { entity_type: "member", entity_id: placeholder.id, is_placeholder: true },
         });
 
         return { success: true, placeholderId: placeholder.id };
@@ -594,9 +514,9 @@ export const groupsService = {
         removedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
-        
+
         // SECURITY: Verify user is an admin of this group
-        const accessCheck = await verifyGroupAccess(groupId, removedBy, "admin", "remove_placeholder_member");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, removedBy, "admin", "remove_placeholder_member");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
@@ -628,15 +548,14 @@ export const groupsService = {
         if (error) {
             return { success: false, error: error.message };
         }
-        
+
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: removedBy,
-            group_id: groupId,
-            entity_type: "member",
-            entity_id: placeholderId,
-            action: "removed",
-            metadata: { member_name: placeholder?.name, is_placeholder: true },
+        await logActivity(supabase, {
+            userId: removedBy,
+            groupId,
+            action: ActivityTypes.PLACEHOLDER_REMOVED,
+            details: { member_name: placeholder?.name },
+            metadata: { entity_type: "member", entity_id: placeholderId, is_placeholder: true },
         });
 
         return { success: true };
@@ -652,13 +571,13 @@ export const groupsService = {
         removedBy: string
     ): Promise<{ success: boolean; error?: string }> {
         const supabase = createClient();
-        
+
         // SECURITY: Verify access - admin can remove anyone, user can remove themselves
-        const accessCheck = await verifyGroupAccess(groupId, removedBy, "member", "remove_member");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, removedBy, "member", "remove_member");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
-        
+
         // Only admins can remove other members
         if (userId !== removedBy && !accessCheck.membership?.isAdmin) {
             logger.security(
@@ -699,12 +618,11 @@ export const groupsService = {
         }
 
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: removedBy,
-            group_id: groupId,
-            entity_type: "member",
-            entity_id: userId,
-            action: "removed",
+        await logActivity(supabase, {
+            userId: removedBy,
+            groupId,
+            action: ActivityTypes.MEMBER_REMOVED,
+            metadata: { entity_type: "member", entity_id: userId },
         });
 
         return { success: true };
@@ -782,21 +700,21 @@ export const groupsService = {
         toIsPlaceholder: boolean = false
     ): Promise<{ success: boolean; error?: string; pending?: boolean; message?: string }> {
         const supabase = createClient();
-        
+
         // VALIDATION: Amount must be positive and reasonable
         if (!amount || amount <= 0) {
             return { success: false, error: "Settlement amount must be positive" };
         }
-        
+
         if (amount > 10000000) { // $10M cap for sanity
             return { success: false, error: "Settlement amount exceeds maximum limit" };
         }
-        
+
         // Round to 2 decimal places to avoid floating point issues
         amount = Math.round(amount * 100) / 100;
-        
+
         // SECURITY: Verify user is a member of this group (IDOR prevention)
-        const accessCheck = await verifyGroupAccess(groupId, recordedBy, "member", "record_settlement");
+        const accessCheck = await verifyGroupAccess(supabase, groupId, recordedBy, "member", "record_settlement");
         if (!accessCheck.success) {
             return { success: false, error: accessCheck.error };
         }
@@ -883,12 +801,12 @@ export const groupsService = {
         }
 
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: recordedBy,
-            group_id: groupId,
-            entity_type: "settlement",
-            action: needsApproval ? "requested" : "created",
+        await logActivity(supabase, {
+            userId: recordedBy,
+            groupId,
+            action: needsApproval ? ActivityTypes.SETTLEMENT_REQUESTED : ActivityTypes.SETTLEMENT_RECORDED,
             metadata: {
+                entity_type: "settlement",
                 from_user: fromUserId,
                 to_user: toUserId,
                 amount,
@@ -930,125 +848,9 @@ export const groupsService = {
         return data || [];
     },
 
-    async getSettlementsWithNames(groupId: string): Promise<{
-        id: string;
-        from_user: string;
-        from_user_name: string;
-        to_user: string;
-        to_user_name: string;
-        amount: number;
-        settled_at: string;
-        note: string | null;
-        status?: string;
-    }[]> {
+    async getSettlementsWithNames(groupId: string): Promise<SettlementWithNames[]> {
         const supabase = createClient();
-
-        const { data, error } = await supabase
-            .from("settlements")
-            .select(`
-                id,
-                from_user,
-                to_user,
-                from_placeholder_id,
-                to_placeholder_id,
-                amount,
-                settled_at,
-                requested_at,
-                note,
-                status,
-                from_profile:profiles!settlements_from_user_fkey(id, full_name, email),
-                to_profile:profiles!settlements_to_user_fkey(id, full_name, email),
-                from_placeholder:placeholder_members!settlements_from_placeholder_id_fkey(id, name),
-                to_placeholder:placeholder_members!settlements_to_placeholder_id_fkey(id, name)
-            `)
-            .eq("group_id", groupId)
-            .eq("status", "approved") // Only show approved settlements in history
-            .order("settled_at", { ascending: false, nullsFirst: false })
-            .order("requested_at", { ascending: false });
-
-        if (error) {
-            console.error("Error fetching settlements with names:", error);
-            return [];
-        }
-
-        type ProfileData = { full_name: string | null; email: string };
-        type PlaceholderData = { id: string; name: string };
-
-        // Collect IDs that need placeholder lookup (profile join returned null)
-        const placeholderIdsToLookup: string[] = [];
-        (data || []).forEach((s) => {
-            const fromProfile = s.from_profile as unknown as ProfileData | null;
-            const toProfile = s.to_profile as unknown as ProfileData | null;
-            const fromPlaceholder = s.from_placeholder as unknown as PlaceholderData | null;
-            const toPlaceholder = s.to_placeholder as unknown as PlaceholderData | null;
-
-            // If from_user has no profile AND no placeholder, it might be an old record with placeholder ID in from_user
-            if (s.from_user && !fromProfile?.full_name && !fromProfile?.email && !fromPlaceholder?.name) {
-                placeholderIdsToLookup.push(s.from_user);
-            }
-            // Same for to_user
-            if (s.to_user && !toProfile?.full_name && !toProfile?.email && !toPlaceholder?.name) {
-                placeholderIdsToLookup.push(s.to_user);
-            }
-        });
-
-        // Fetch placeholder names for old records that stored placeholder ID in from_user/to_user
-        const placeholderNameMap = new Map<string, string>();
-        if (placeholderIdsToLookup.length > 0) {
-            const { data: placeholders } = await supabase
-                .from("placeholder_members")
-                .select("id, name")
-                .in("id", placeholderIdsToLookup);
-
-            (placeholders || []).forEach((p) => {
-                placeholderNameMap.set(p.id, p.name);
-            });
-        }
-
-        return (data || []).map((s) => {
-            // Handle both real users and placeholders
-            const fromProfile = s.from_profile as unknown as ProfileData | null;
-            const toProfile = s.to_profile as unknown as ProfileData | null;
-            const fromPlaceholder = s.from_placeholder as unknown as PlaceholderData | null;
-            const toPlaceholder = s.to_placeholder as unknown as PlaceholderData | null;
-
-            // Determine names - check placeholder first, then profile, then fallback lookup
-            const fromName = fromPlaceholder?.name
-                || fromProfile?.full_name
-                || fromProfile?.email
-                || placeholderNameMap.get(s.from_user) // Fallback for old records
-                || "Unknown";
-            const toName = toPlaceholder?.name
-                || toProfile?.full_name
-                || toProfile?.email
-                || placeholderNameMap.get(s.to_user) // Fallback for old records
-                || "Unknown";
-
-            // Check if this involves a placeholder (should be auto-approved)
-            const involvesPlaceholder = !!fromPlaceholder?.name
-                || !!toPlaceholder?.name
-                || placeholderNameMap.has(s.from_user)
-                || placeholderNameMap.has(s.to_user)
-                || !!s.from_placeholder_id
-                || !!s.to_placeholder_id;
-
-            // Auto-approve settlements involving placeholders (they can't respond)
-            const effectiveStatus = (s.status === "pending" && involvesPlaceholder)
-                ? "approved"
-                : s.status;
-
-            return {
-                id: s.id,
-                from_user: s.from_user || s.from_placeholder_id || "",
-                from_user_name: fromName,
-                to_user: s.to_user || s.to_placeholder_id || "",
-                to_user_name: toName,
-                amount: s.amount,
-                settled_at: s.settled_at || s.requested_at || new Date().toISOString(),
-                note: s.note,
-                status: effectiveStatus,
-            };
-        });
+        return getSettlementsWithNamesCore(supabase, groupId);
     },
 
     /**

@@ -2,143 +2,14 @@ import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database";
 import { safeUuidList, ValidationSchemas } from "@/lib/validation";
 import { logger, SecurityEvents } from "@/lib/logger";
+import { isGroupMember, verifyExpenseAccess, verifySplitAccess } from "@/lib/auth-helpers";
+import { logActivity, logActivities, ActivityTypes } from "@/lib/activity-logger";
 
 type Expense = Database["public"]["Tables"]["expenses"]["Row"];
 type ExpenseSplit = Database["public"]["Tables"]["expense_splits"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
 type SplitType = Database["public"]["Enums"]["split_type"];
-
-// ============================================
-// AUTHORIZATION HELPERS (IDOR Prevention)
-// ============================================
-
-/**
- * Verify user is a member of the specified group
- * Used for authorization checks before sensitive operations
- */
-async function isGroupMember(groupId: string, userId: string): Promise<boolean> {
-    const supabase = createClient();
-
-    // Validate inputs
-    if (!ValidationSchemas.uuid.safeParse(groupId).success ||
-        !ValidationSchemas.uuid.safeParse(userId).success) {
-        return false;
-    }
-
-    const { data } = await supabase
-        .from("group_members")
-        .select("id")
-        .eq("group_id", groupId)
-        .eq("user_id", userId)
-        .single();
-
-    return !!data;
-}
-
-/**
- * Get the group ID for an expense and verify user has access
- * Returns null if expense doesn't exist or user doesn't have access
- */
-async function verifyExpenseAccess(
-    expenseId: string,
-    userId: string
-): Promise<{ groupId: string; expense: Expense } | null> {
-    const supabase = createClient();
-
-    // Validate inputs
-    if (!ValidationSchemas.uuid.safeParse(expenseId).success ||
-        !ValidationSchemas.uuid.safeParse(userId).success) {
-        logger.warn("Invalid UUID in expense access check", { expenseId, userId });
-        return null;
-    }
-
-    // Get expense with group_id
-    const { data: expense, error } = await supabase
-        .from("expenses")
-        .select("*")
-        .eq("id", expenseId)
-        .single();
-
-    if (error || !expense) {
-        return null;
-    }
-
-    // Verify user is a member of the group
-    const isMember = await isGroupMember(expense.group_id, userId);
-
-    if (!isMember) {
-        // Log potential IDOR attempt
-        logger.security(
-            SecurityEvents.ACCESS_DENIED,
-            "medium",
-            "blocked",
-            {
-                userId,
-                expenseId,
-                groupId: expense.group_id,
-                action: "expense_access",
-                reason: "not_group_member"
-            }
-        );
-        return null;
-    }
-
-    return { groupId: expense.group_id, expense };
-}
-
-/**
- * Get the expense ID for a split and verify user has access
- * Returns null if split doesn't exist or user doesn't have access
- */
-async function verifySplitAccess(
-    splitId: string,
-    userId: string
-): Promise<{ expenseId: string; groupId: string } | null> {
-    const supabase = createClient();
-
-    // Validate inputs
-    if (!ValidationSchemas.uuid.safeParse(splitId).success ||
-        !ValidationSchemas.uuid.safeParse(userId).success) {
-        return null;
-    }
-
-    // Get split with expense info
-    const { data: split, error } = await supabase
-        .from("expense_splits")
-        .select("expense_id, expense:expenses(group_id)")
-        .eq("id", splitId)
-        .single();
-
-    if (error || !split || !split.expense) {
-        return null;
-    }
-
-    // Type cast through unknown for Supabase join result
-    const expenseData = split.expense as unknown as { group_id: string };
-    const groupId = expenseData.group_id;
-
-    // Verify user is a member of the group
-    const isMember = await isGroupMember(groupId, userId);
-
-    if (!isMember) {
-        logger.security(
-            SecurityEvents.ACCESS_DENIED,
-            "medium",
-            "blocked",
-            {
-                userId,
-                splitId,
-                groupId,
-                action: "split_access",
-                reason: "not_group_member"
-            }
-        );
-        return null;
-    }
-
-    return { expenseId: split.expense_id, groupId };
-}
 
 export interface ExpenseWithDetails extends Expense {
     paid_by_profile: Profile;
@@ -407,14 +278,14 @@ export const expensesService = {
             .eq("id", input.group_id);
 
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: createdBy,
-            group_id: input.group_id,
-            entity_type: "expense",
-            entity_id: expense.id,
-            action: "created",
+        await logActivity(supabase, {
+            userId: createdBy,
+            groupId: input.group_id,
+            action: ActivityTypes.EXPENSE_CREATED,
+            details: { description: expense.description },
             metadata: {
-                description: expense.description,
+                entity_type: "expense",
+                entity_id: expense.id,
                 amount: expense.amount,
             },
         });
@@ -450,7 +321,7 @@ export const expensesService = {
         }
 
         // Verify user is a member of the group
-        const isMember = await isGroupMember(input.group_id, createdBy);
+        const isMember = await isGroupMember(supabase, input.group_id, createdBy);
         if (!isMember) {
             logger.security(
                 SecurityEvents.ACCESS_DENIED,
@@ -548,20 +419,19 @@ export const expensesService = {
             .eq("id", input.group_id);
 
         // SINGLE DB HIT: Log activities for all expenses
-        const activities = createdExpenses.map((expense) => ({
-            user_id: createdBy,
-            group_id: input.group_id,
-            entity_type: "expense",
-            entity_id: expense.id,
-            action: "created",
-            metadata: {
-                description: expense.description,
-                amount: expense.amount,
-                bulk_created: true,
-            },
-        }));
-
-        await supabase.from("activities").insert(activities);
+        await logActivities(supabase, {
+            userId: createdBy,
+            groupId: input.group_id,
+            activities: createdExpenses.map((expense) => ({
+                action: ActivityTypes.EXPENSE_CREATED,
+                details: { description: expense.description, bulk_created: true },
+                metadata: {
+                    entity_type: "expense",
+                    entity_id: expense.id,
+                    amount: expense.amount,
+                },
+            })),
+        });
 
         return { expenses: createdExpenses as Expense[] };
     },
@@ -596,7 +466,7 @@ export const expensesService = {
         }
 
         // Verify user is a member of the group
-        const isMember = await isGroupMember(input.group_id, createdBy);
+        const isMember = await isGroupMember(supabase, input.group_id, createdBy);
         if (!isMember) {
             logger.security(
                 SecurityEvents.ACCESS_DENIED,
@@ -691,20 +561,19 @@ export const expensesService = {
             .eq("id", input.group_id);
 
         // SINGLE DB HIT: Log activities for all expenses
-        const activities = createdExpenses.map((expense) => ({
-            user_id: createdBy,
-            group_id: input.group_id,
-            entity_type: "expense",
-            entity_id: expense.id,
-            action: "created",
-            metadata: {
-                description: expense.description,
-                amount: expense.amount,
-                bulk_created: true,
-            },
-        }));
-
-        await supabase.from("activities").insert(activities);
+        await logActivities(supabase, {
+            userId: createdBy,
+            groupId: input.group_id,
+            activities: createdExpenses.map((expense) => ({
+                action: ActivityTypes.EXPENSE_CREATED,
+                details: { description: expense.description, bulk_created: true },
+                metadata: {
+                    entity_type: "expense",
+                    entity_id: expense.id,
+                    amount: expense.amount,
+                },
+            })),
+        });
 
         return { expenses: createdExpenses as Expense[] };
     },
@@ -721,7 +590,7 @@ export const expensesService = {
         const supabase = createClient();
 
         // SECURITY: Verify user has access to this expense (IDOR prevention)
-        const access = await verifyExpenseAccess(expenseId, updatedBy);
+        const access = await verifyExpenseAccess(supabase, expenseId, updatedBy);
         if (!access) {
             return { success: false, error: "Expense not found or access denied" };
         }
@@ -739,13 +608,13 @@ export const expensesService = {
         }
 
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: updatedBy,
-            group_id: access.groupId,
-            entity_type: "expense",
-            entity_id: expenseId,
-            action: "updated",
+        await logActivity(supabase, {
+            userId: updatedBy,
+            groupId: access.groupId,
+            action: ActivityTypes.EXPENSE_UPDATED,
             metadata: {
+                entity_type: "expense",
+                entity_id: expenseId,
                 changes: Object.keys(input),
             },
         });
@@ -765,7 +634,7 @@ export const expensesService = {
         const supabase = createClient();
 
         // SECURITY: Verify user has access to this expense (IDOR prevention)
-        const access = await verifyExpenseAccess(expenseId, deletedBy);
+        const access = await verifyExpenseAccess(supabase, expenseId, deletedBy);
         if (!access) {
             return { success: false, error: "Expense not found or access denied" };
         }
@@ -788,14 +657,14 @@ export const expensesService = {
         }
 
         // Log activity (audit trigger will also log this, but keep for backwards compatibility)
-        await supabase.from("activities").insert({
-            user_id: deletedBy,
-            group_id: access.groupId,
-            entity_type: "expense",
-            entity_id: expenseId,
-            action: "deleted",
+        await logActivity(supabase, {
+            userId: deletedBy,
+            groupId: access.groupId,
+            action: ActivityTypes.EXPENSE_DELETED,
+            details: { description: access.expense.description },
             metadata: {
-                description: access.expense.description,
+                entity_type: "expense",
+                entity_id: expenseId,
                 amount: access.expense.amount,
             },
         });
@@ -814,7 +683,7 @@ export const expensesService = {
         const supabase = createClient();
 
         // SECURITY: Verify user has access to this split (IDOR prevention)
-        const access = await verifySplitAccess(splitId, settledBy);
+        const access = await verifySplitAccess(supabase, splitId, settledBy);
         if (!access) {
             return { success: false, error: "Split not found or access denied" };
         }
@@ -832,13 +701,13 @@ export const expensesService = {
         }
 
         // Log activity
-        await supabase.from("activities").insert({
-            user_id: settledBy,
-            group_id: access.groupId,
-            entity_type: "expense_split",
-            entity_id: splitId,
-            action: "settled",
+        await logActivity(supabase, {
+            userId: settledBy,
+            groupId: access.groupId,
+            action: ActivityTypes.SPLIT_SETTLED,
             metadata: {
+                entity_type: "expense_split",
+                entity_id: splitId,
                 expense_id: access.expenseId,
             },
         });
