@@ -2,18 +2,23 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, X, Loader2, Users, Trash2, CheckCircle } from "lucide-react";
+import { Bell, Check, X, Loader2, Users, Trash2, CheckCircle, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { createClient } from "@/lib/supabase/client";
 import {
     notificationsService,
     type Notification,
     type GroupInvitation,
 } from "@/services/notifications";
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 interface NotificationBellProps {
     userId: string;
 }
+
+// Backup polling interval (5 minutes) - safety net if WebSocket disconnects
+const BACKUP_POLL_INTERVAL = 5 * 60 * 1000;
 
 export function NotificationBell({ userId }: NotificationBellProps) {
     const router = useRouter();
@@ -24,7 +29,9 @@ export function NotificationBell({ userId }: NotificationBellProps) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [isConnected, setIsConnected] = useState(true);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const channelRef = useRef<RealtimeChannel | null>(null);
 
     const loadData = useCallback(async () => {
         const [notifs, invites, count] = await Promise.all([
@@ -38,20 +45,172 @@ export function NotificationBell({ userId }: NotificationBellProps) {
         setIsLoading(false);
     }, [userId]);
 
+    // Handle new notification from Realtime
+    const handleNewNotification = useCallback((payload: RealtimePostgresChangesPayload<Notification>) => {
+        const newNotification = payload.new as Notification;
+        setNotifications((prev) => {
+            // Avoid duplicates
+            if (prev.some((n) => n.id === newNotification.id)) return prev;
+            return [newNotification, ...prev].slice(0, 10);
+        });
+        if (!newNotification.is_read) {
+            setUnreadCount((prev) => prev + 1);
+        }
+    }, []);
+
+    // Handle notification update from Realtime (e.g., marked as read)
+    const handleNotificationUpdate = useCallback((payload: RealtimePostgresChangesPayload<Notification>) => {
+        const updated = payload.new as Notification;
+        setNotifications((prev) =>
+            prev.map((n) => (n.id === updated.id ? updated : n))
+        );
+        // If notification was marked as read, decrement unread count
+        if (updated.is_read && payload.old) {
+            setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
+    }, []);
+
+    // Handle notification delete from Realtime
+    const handleNotificationDelete = useCallback((payload: RealtimePostgresChangesPayload<Notification>) => {
+        const old = payload.old as { id: string };
+        const deletedId = old.id;
+        setNotifications((prev) => {
+            const notification = prev.find((n) => n.id === deletedId);
+            if (notification && !notification.is_read) {
+                setUnreadCount((c) => Math.max(0, c - 1));
+            }
+            return prev.filter((n) => n.id !== deletedId);
+        });
+    }, []);
+
+    // Handle new group invitation from Realtime
+    type InvitationPayload = { id: string; invited_user_id: string; status: string };
+    const handleNewInvitation = useCallback(async (payload: RealtimePostgresChangesPayload<InvitationPayload>) => {
+        const newInvite = payload.new as InvitationPayload;
+        // Only handle pending invitations for this user
+        if (newInvite.status !== "pending" || newInvite.invited_user_id !== userId) return;
+
+        // Fetch full invitation with group and inviter details
+        const invites = await notificationsService.getPendingInvitations(userId);
+        const invitation = invites.find((i) => i.id === newInvite.id);
+        if (invitation) {
+            setInvitations((prev) => {
+                if (prev.some((i) => i.id === invitation.id)) return prev;
+                return [invitation, ...prev];
+            });
+            setUnreadCount((prev) => prev + 1);
+        }
+    }, [userId]);
+
+    // Handle invitation update from Realtime (accepted/declined)
+    const handleInvitationUpdate = useCallback((payload: RealtimePostgresChangesPayload<InvitationPayload>) => {
+        const updated = payload.new as InvitationPayload;
+        if (updated.status !== "pending") {
+            // Remove from list if accepted or declined
+            setInvitations((prev) => {
+                const existed = prev.some((i) => i.id === updated.id);
+                if (existed) {
+                    setUnreadCount((c) => Math.max(0, c - 1));
+                }
+                return prev.filter((i) => i.id !== updated.id);
+            });
+        }
+    }, []);
+
+    // Setup Supabase Realtime subscription
     useEffect(() => {
-        // Schedule initial load to avoid synchronous setState in effect
+        const supabase = createClient();
+
+        // Initial load - schedule to avoid synchronous setState in effect
         const initialLoad = setTimeout(() => {
             loadData();
         }, 0);
 
-        // Poll for new notifications every 30 seconds
-        const interval = setInterval(loadData, 30000);
+        // Create Realtime channel
+        const channel = supabase
+            .channel(`user_${userId}_notifications`)
+            // Notifications table subscriptions
+            .on(
+                "postgres_changes",
+                {
+                    event: "INSERT",
+                    schema: "public",
+                    table: "notifications",
+                    filter: `user_id=eq.${userId}`,
+                },
+                handleNewNotification
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "notifications",
+                    filter: `user_id=eq.${userId}`,
+                },
+                handleNotificationUpdate
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "DELETE",
+                    schema: "public",
+                    table: "notifications",
+                    filter: `user_id=eq.${userId}`,
+                },
+                handleNotificationDelete
+            )
+            // Group invitations table subscriptions
+            .on(
+                "postgres_changes",
+                {
+                    event: "INSERT",
+                    schema: "public",
+                    table: "group_invitations",
+                    filter: `invited_user_id=eq.${userId}`,
+                },
+                handleNewInvitation
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "group_invitations",
+                    filter: `invited_user_id=eq.${userId}`,
+                },
+                handleInvitationUpdate
+            )
+            .subscribe((status) => {
+                if (status === "SUBSCRIBED") {
+                    setIsConnected(true);
+                } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                    setIsConnected(false);
+                }
+            });
 
+        channelRef.current = channel;
+
+        // Backup polling every 5 minutes (safety net)
+        const backupInterval = setInterval(loadData, BACKUP_POLL_INTERVAL);
+
+        // Cleanup
         return () => {
             clearTimeout(initialLoad);
-            clearInterval(interval);
+            clearInterval(backupInterval);
+            if (channelRef.current) {
+                supabase.removeChannel(channelRef.current);
+            }
         };
-    }, [loadData]);
+    }, [
+        userId,
+        loadData,
+        handleNewNotification,
+        handleNotificationUpdate,
+        handleNotificationDelete,
+        handleNewInvitation,
+        handleInvitationUpdate,
+    ]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -175,15 +334,29 @@ export function NotificationBell({ userId }: NotificationBellProps) {
                         {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                 )}
+                {/* Connection status indicator */}
+                {!isConnected && (
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-amber-500" title="Reconnecting...">
+                        <WifiOff className="h-2 w-2 text-white" />
+                    </span>
+                )}
             </button>
 
             {isOpen && (
                 <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 z-50">
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-                        <h3 className="font-semibold text-gray-900 dark:text-white">
-                            Notifications
-                        </h3>
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                                Notifications
+                            </h3>
+                            {!isConnected && (
+                                <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                                    <WifiOff className="h-3 w-3" />
+                                    Offline
+                                </span>
+                            )}
+                        </div>
                         <div className="flex items-center gap-3">
                             {notifications.some((n) => n.is_read) && (
                                 <button
@@ -339,4 +512,3 @@ export function NotificationBell({ userId }: NotificationBellProps) {
         </div>
     );
 }
-

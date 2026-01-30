@@ -19,6 +19,27 @@ jest.mock("@/services/notifications", () => ({
     },
 }));
 
+// Mock Supabase Realtime
+const mockSubscribe = jest.fn();
+const mockOn = jest.fn();
+const mockRemoveChannel = jest.fn();
+
+const mockChannel = {
+    on: mockOn.mockReturnThis(),
+    subscribe: mockSubscribe.mockImplementation((callback) => {
+        // Simulate successful subscription
+        if (callback) callback("SUBSCRIBED");
+        return mockChannel;
+    }),
+};
+
+jest.mock("@/lib/supabase/client", () => ({
+    createClient: () => ({
+        channel: jest.fn().mockReturnValue(mockChannel),
+        removeChannel: mockRemoveChannel,
+    }),
+}));
+
 const mockNotificationsService = notificationsService as jest.Mocked<typeof notificationsService>;
 
 // Test wrapper with ToastProvider
@@ -57,7 +78,7 @@ describe("NotificationBell", () => {
     beforeEach(() => {
         jest.clearAllMocks();
         jest.useFakeTimers();
-        
+
         // Setup default mock returns
         mockNotificationsService.getNotifications.mockResolvedValue(mockNotifications);
         mockNotificationsService.getPendingInvitations.mockResolvedValue([]);
@@ -70,7 +91,7 @@ describe("NotificationBell", () => {
 
     it("renders the bell icon", async () => {
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         // Advance timers to trigger initial load
         await act(async () => {
             jest.advanceTimersByTime(0);
@@ -81,7 +102,7 @@ describe("NotificationBell", () => {
 
     it("shows unread count badge when there are unread notifications", async () => {
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -94,7 +115,7 @@ describe("NotificationBell", () => {
     it("opens dropdown when bell is clicked", async () => {
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -107,7 +128,7 @@ describe("NotificationBell", () => {
     it("displays notifications in dropdown", async () => {
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -123,7 +144,7 @@ describe("NotificationBell", () => {
     it("shows 'Mark all read' button when there are unread notifications", async () => {
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -138,7 +159,7 @@ describe("NotificationBell", () => {
     it("shows 'Clear read' button when there are read notifications", async () => {
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -153,15 +174,15 @@ describe("NotificationBell", () => {
     it("calls markAllAsRead when 'Mark all read' is clicked", async () => {
         mockNotificationsService.markAllAsRead.mockResolvedValue(true);
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-        
+
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
 
         await user.click(screen.getByRole("button"));
-        
+
         await waitFor(() => {
             expect(screen.getByText("Mark all read")).toBeInTheDocument();
         });
@@ -176,15 +197,15 @@ describe("NotificationBell", () => {
     it("calls deleteAllRead when 'Clear read' is clicked", async () => {
         mockNotificationsService.deleteAllRead.mockResolvedValue(true);
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-        
+
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
 
         await user.click(screen.getByRole("button"));
-        
+
         await waitFor(() => {
             expect(screen.getByText("Clear read")).toBeInTheDocument();
         });
@@ -199,10 +220,10 @@ describe("NotificationBell", () => {
     it("shows empty state when no notifications", async () => {
         mockNotificationsService.getNotifications.mockResolvedValue([]);
         mockNotificationsService.getUnreadCount.mockResolvedValue(0);
-        
+
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -217,15 +238,15 @@ describe("NotificationBell", () => {
     it("marks notification as read when clicked", async () => {
         mockNotificationsService.markAsRead.mockResolvedValue(true);
         const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
-        
+
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
 
         await user.click(screen.getByRole("button"));
-        
+
         await waitFor(() => {
             expect(screen.getByText("Feedback Response")).toBeInTheDocument();
         });
@@ -238,9 +259,37 @@ describe("NotificationBell", () => {
         });
     });
 
-    it("polls for new notifications every 30 seconds", async () => {
+    it("sets up Realtime subscription on mount", async () => {
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
+        await act(async () => {
+            jest.advanceTimersByTime(0);
+        });
+
+        // Should subscribe to Realtime channel
+        expect(mockSubscribe).toHaveBeenCalled();
+
+        // Should set up listeners for notifications and invitations
+        // 5 listeners: INSERT/UPDATE/DELETE for notifications + INSERT/UPDATE for invitations
+        expect(mockOn).toHaveBeenCalledTimes(5);
+    });
+
+    it("cleans up Realtime subscription on unmount", async () => {
+        const { unmount } = render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
+
+        await act(async () => {
+            jest.advanceTimersByTime(0);
+        });
+
+        unmount();
+
+        // Should remove the channel on unmount
+        expect(mockRemoveChannel).toHaveBeenCalled();
+    });
+
+    it("uses backup polling every 5 minutes", async () => {
+        render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
+
         // Initial load
         await act(async () => {
             jest.advanceTimersByTime(0);
@@ -249,9 +298,9 @@ describe("NotificationBell", () => {
         // First call should have been made
         expect(mockNotificationsService.getNotifications).toHaveBeenCalledTimes(1);
 
-        // Advance by 30 seconds
+        // Advance by 5 minutes (backup polling interval)
         await act(async () => {
-            jest.advanceTimersByTime(30000);
+            jest.advanceTimersByTime(5 * 60 * 1000);
         });
 
         // Second call should have been made
@@ -265,7 +314,7 @@ describe("NotificationBell", () => {
         mockNotificationsService.getUnreadCount.mockResolvedValue(0);
 
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -279,7 +328,7 @@ describe("NotificationBell", () => {
         mockNotificationsService.getUnreadCount.mockResolvedValue(15);
 
         render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
-        
+
         await act(async () => {
             jest.advanceTimersByTime(0);
         });
@@ -288,5 +337,58 @@ describe("NotificationBell", () => {
             expect(screen.getByText("9+")).toBeInTheDocument();
         });
     });
-});
 
+    it("shows connected state by default", async () => {
+        render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
+
+        await act(async () => {
+            jest.advanceTimersByTime(0);
+        });
+
+        // No offline indicator should be visible
+        const button = screen.getByRole("button");
+        expect(button).toBeInTheDocument();
+        // The WifiOff icon (offline indicator) should not be in the button
+        expect(screen.queryByTitle("Reconnecting...")).not.toBeInTheDocument();
+    });
+
+    it("shows offline indicator when connection fails", async () => {
+        // Override mock to simulate connection failure
+        mockSubscribe.mockImplementationOnce((callback) => {
+            if (callback) callback("CHANNEL_ERROR");
+            return mockChannel;
+        });
+
+        render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
+
+        await act(async () => {
+            jest.advanceTimersByTime(0);
+        });
+
+        // The offline indicator should appear
+        await waitFor(() => {
+            expect(screen.getByTitle("Reconnecting...")).toBeInTheDocument();
+        });
+    });
+
+    it("shows offline text in dropdown header when disconnected", async () => {
+        // Override mock to simulate connection failure
+        mockSubscribe.mockImplementationOnce((callback) => {
+            if (callback) callback("TIMED_OUT");
+            return mockChannel;
+        });
+
+        const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+        render(<NotificationBell userId="user-123" />, { wrapper: TestWrapper });
+
+        await act(async () => {
+            jest.advanceTimersByTime(0);
+        });
+
+        await user.click(screen.getByRole("button"));
+
+        await waitFor(() => {
+            expect(screen.getByText("Offline")).toBeInTheDocument();
+        });
+    });
+});
