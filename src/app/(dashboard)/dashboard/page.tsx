@@ -19,15 +19,14 @@ import type { Profile, Group, ExpenseSplit, RecentExpense } from "@/types/dashbo
 export default async function DashboardPage() {
     const supabase = await createClient();
 
-    // Layout already verified auth with getUser() - we just need the user ID
-    // Use getSession() here since layout guarantees authenticated user
-    const { data: { session } } = await supabase.auth.getSession();
+    // Get authenticated user (validates token with Supabase Auth server)
+    const { data: { user }, error } = await supabase.auth.getUser();
 
-    if (!session?.user) {
+    if (error || !user) {
         redirect("/login");
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
 
     // OPTIMIZED: 4 queries in parallel (reduced from 5)
     // Combined expense calculations into single queries with proper filtering

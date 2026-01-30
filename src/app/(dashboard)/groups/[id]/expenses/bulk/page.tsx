@@ -13,8 +13,8 @@ export default async function BulkExpensePage({ params }: BulkExpensePageProps) 
     const supabase = await createClient();
 
     // Verify auth
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error || !user) {
         redirect("/login");
     }
 
