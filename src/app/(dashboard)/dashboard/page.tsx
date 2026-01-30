@@ -11,6 +11,9 @@ import { formatCurrency } from "@/lib/currency";
 import { encryptUrlId } from "@/lib/url-ids";
 import type { Profile, Group, ExpenseSplit, RecentExpense } from "@/types/dashboard";
 
+// Force dynamic rendering to ensure fresh data
+export const dynamic = "force-dynamic";
+
 // ============================================
 // OPTIMIZED: Single data fetch, no Suspense overhead
 // Trade streaming for faster total load time
@@ -67,11 +70,11 @@ export default async function DashboardPage() {
     const allSplits = (expenseSplitsResult.data || []) as unknown as ExpenseSplit[];
     let totalOwed = 0;
     let totalOwe = 0;
-    
+
     for (const split of allSplits) {
         const expense = Array.isArray(split.expense) ? split.expense[0] : split.expense;
         const paidBy = expense?.paid_by;
-        
+
         if (paidBy === userId && split.user_id !== userId) {
             // User paid, someone else owes them
             totalOwed += split.amount || 0;
