@@ -5,6 +5,28 @@ import { TextEncoder, TextDecoder } from "util";
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder as typeof global.TextDecoder;
 
+// Mock @upstash/redis before any imports that use it
+jest.mock("@upstash/redis", () => ({
+    Redis: jest.fn().mockImplementation(() => ({
+        ping: jest.fn().mockResolvedValue("PONG"),
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue("OK"),
+        del: jest.fn().mockResolvedValue(1),
+    })),
+}));
+
+// Mock @upstash/ratelimit
+jest.mock("@upstash/ratelimit", () => ({
+    Ratelimit: jest.fn().mockImplementation(() => ({
+        limit: jest.fn().mockResolvedValue({ 
+            success: true, 
+            limit: 100, 
+            remaining: 99, 
+            reset: Date.now() + 60000 
+        }),
+    })),
+}));
+
 // Mock next/cache to avoid server-only code in tests
 jest.mock("next/cache", () => ({
     revalidatePath: jest.fn(),

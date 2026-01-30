@@ -1,4 +1,5 @@
 import { getRedis } from "./redis";
+import { log } from "./console-logger";
 
 // ============================================
 // DISTRIBUTED LOCKING (REDLOCK PATTERN)
@@ -45,7 +46,7 @@ export async function acquireLock(
     // If Redis not available, allow operation (fail open)
     // Note: This means no lock protection without Redis
     if (!redis) {
-        console.warn("⚠️ Redis not available, proceeding without lock for:", key);
+        log.warn("Lock", "Redis not available, proceeding without lock");
         return { acquired: true, lockId: null };
     }
 
@@ -70,7 +71,7 @@ export async function acquireLock(
                 await sleep(opts.retryDelay);
             }
         } catch (error) {
-            console.error("[Lock] Acquisition error for:", key, error);
+            log.error("Lock", "Acquisition error", error);
             // On error, fail open (allow operation)
             return { acquired: true, lockId: null };
         }
@@ -101,7 +102,7 @@ export async function releaseLock(key: string, lockId: string | null): Promise<v
             await redis.del(lockKey);
         }
     } catch (error) {
-        console.error("[Lock] Release error for:", key, error);
+        log.error("Lock", "Release error", error);
         // Ignore release errors - lock will expire anyway
     }
 }

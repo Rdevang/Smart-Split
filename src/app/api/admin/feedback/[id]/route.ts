@@ -1,48 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+/**
+ * PATCH /api/admin/feedback/[id]
+ * 
+ * Update feedback status and response.
+ * Requires admin authentication.
+ */
 
-// PATCH - Update feedback status and response
-export async function PATCH(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
-) {
-    try {
-        const { id } = await params;
-        const supabase = await createClient();
+import { z } from "zod";
+import { createRoute, withAdminAuth, withValidation, ApiResponse, ApiError } from "@/lib/api";
+import { log } from "@/lib/console-logger";
 
-        // Check if user is authenticated and is admin
-        const { data: { user } } = await supabase.auth.getUser();
+const UpdateFeedbackSchema = z.object({
+    status: z.enum(["submitted", "under_review", "approved", "rejected", "closed"]).optional(),
+    admin_response: z.string().optional(),
+});
 
-        if (!user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        // Check admin role
-        const { data: profile } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single();
-
-        if (profile?.role !== "admin" && profile?.role !== "site_admin") {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
-
-        const body = await request.json();
-        const { status, admin_response } = body;
-
-        // Validate status
-        const validStatuses = ["submitted", "under_review", "approved", "rejected", "closed"];
-        if (status && !validStatuses.includes(status)) {
-            return NextResponse.json({ error: "Invalid status" }, { status: 400 });
-        }
+export const PATCH = createRoute()
+    .use(withAdminAuth())
+    .use(withValidation(UpdateFeedbackSchema))
+    .handler(async (ctx) => {
+        const feedbackId = ctx.params.id;
+        const { status, admin_response } = ctx.validated;
 
         // Get the feedback first to check user_id and previous response
-        const { data: feedback } = await supabase
+        const { data: feedback } = await ctx.supabase
             .from("feedback")
             .select("user_id, title, admin_response")
-            .eq("id", id)
+            .eq("id", feedbackId)
             .single();
+
+        if (!feedback) {
+            return ApiError.notFound("Feedback");
+        }
 
         // Update feedback
         const updateData: Record<string, unknown> = {
@@ -54,41 +42,36 @@ export async function PATCH(
         }
 
         const isNewResponse = admin_response && admin_response.trim() !== "" &&
-            admin_response !== feedback?.admin_response;
+            admin_response !== feedback.admin_response;
 
         if (admin_response !== undefined) {
             updateData.admin_response = admin_response;
             updateData.responded_at = new Date().toISOString();
         }
 
-        const { error } = await supabase
+        const { error } = await ctx.supabase
             .from("feedback")
             .update(updateData)
-            .eq("id", id);
+            .eq("id", feedbackId);
 
         if (error) {
-            console.error("Error updating feedback:", error);
-            return NextResponse.json({ error: "Failed to update feedback" }, { status: 500 });
+            log.error("Admin", "Failed to update feedback", error);
+            return ApiError.internal("Failed to update feedback");
         }
 
         // Create notification for the user if there's a new admin response
-        if (isNewResponse && feedback?.user_id) {
+        if (isNewResponse && feedback.user_id) {
             const statusLabel = status ? status.replace("_", " ") : "updated";
 
-            await supabase.from("notifications").insert({
+            await ctx.supabase.from("notifications").insert({
                 user_id: feedback.user_id,
                 type: "feedback_response",
                 title: "Response to your feedback",
                 message: `Your feedback "${feedback.title}" has been ${statusLabel}. Check the response from our team.`,
-                data: { feedback_id: id, status },
+                data: { feedback_id: feedbackId, status },
                 action_url: "/feedback/history",
             });
         }
 
-        return NextResponse.json({ success: true });
-    } catch (error) {
-        console.error("Admin feedback API error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-}
-
+        return ApiResponse.success({ success: true });
+    });

@@ -13,56 +13,37 @@
  * Schedule: 0 9 * * 0 = Every Sunday at 9:00 AM UTC
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { createRoute, withCronAuth, ApiResponse, ApiError } from "@/lib/api";
 import { queueAllWeeklyDigests } from "@/lib/email-digest";
+import { log } from "@/lib/console-logger";
 
-// Verify cron secret to prevent unauthorized access
-function verifyCronSecret(request: NextRequest): boolean {
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
+const handler = createRoute()
+    .use(withCronAuth())
+    .handler(async () => {
+        const startTime = Date.now();
 
-    // If no secret configured, allow in development only
-    if (!cronSecret) {
-        return process.env.NODE_ENV === "development";
-    }
+        try {
+            log.info("Cron", "Starting weekly digest generation");
 
-    return authHeader === `Bearer ${cronSecret}`;
-}
+            const result = await queueAllWeeklyDigests();
 
-export async function GET(request: NextRequest) {
-    // Verify authorization
-    if (!verifyCronSecret(request)) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+            const duration = Date.now() - startTime;
 
-    const startTime = Date.now();
+            log.info("Cron", "Digest generation complete", { duration, ...result });
 
-    try {
-        console.log("[Cron/Digest] Starting weekly digest generation...");
+            return ApiResponse.success({
+                success: true,
+                ...result,
+                duration_ms: duration,
+                timestamp: new Date().toISOString(),
+            });
+        } catch (error) {
+            log.error("Cron", "Digest generation failed", error);
 
-        const result = await queueAllWeeklyDigests();
+            return ApiError.internal(error instanceof Error ? error.message : "Unknown error");
+        }
+    });
 
-        const duration = Date.now() - startTime;
-
-        console.log("[Cron/Digest] Complete in", duration, "ms:", result);
-
-        return NextResponse.json({
-            success: true,
-            ...result,
-            duration_ms: duration,
-            timestamp: new Date().toISOString(),
-        });
-    } catch (error) {
-        console.error("[Cron/Digest] Error:", error);
-
-        return NextResponse.json({
-            success: false,
-            error: error instanceof Error ? error.message : "Unknown error",
-            duration_ms: Date.now() - startTime,
-        }, { status: 500 });
-    }
-}
-
-// Also support POST for flexibility
-export { GET as POST };
-
+// Support both GET and POST for cron flexibility
+export const GET = handler;
+export const POST = handler;

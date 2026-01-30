@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
 import { groupsService } from "@/services/groups";
+import { log } from "@/lib/console-logger";
 
 interface PendingSettlement {
     id: string;
@@ -58,7 +59,7 @@ export function PendingSettlements({ userId }: PendingSettlementsProps) {
                 showError(result.error || "Failed to approve settlement");
             }
         } catch (err) {
-            console.error("Error approving:", err);
+            log.error("Settlement", "Failed to approve", err);
             showError("An unexpected error occurred");
         } finally {
             setProcessingId(null);
@@ -80,7 +81,7 @@ export function PendingSettlements({ userId }: PendingSettlementsProps) {
                 showError(result.error || "Failed to reject settlement");
             }
         } catch (err) {
-            console.error("Error rejecting:", err);
+            log.error("Settlement", "Failed to reject", err);
             showError("An unexpected error occurred");
         } finally {
             setProcessingId(null);

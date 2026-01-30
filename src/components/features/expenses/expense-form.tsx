@@ -285,7 +285,6 @@ export function ExpenseForm({ group, userId }: ExpenseFormProps) {
 
             // Redirect to group page after short delay for toast to show
             const encryptedUrl = await getEncryptedGroupUrl(group.id);
-            console.log("Redirecting to:", encryptedUrl);
 
             // Use window.location for more reliable redirect
             window.location.href = encryptedUrl;

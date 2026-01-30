@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { log } from "./console-logger";
 
 // Singleton Redis client
 // Uses HTTP-based connection - perfect for serverless (no connection pooling issues)
@@ -43,7 +44,7 @@ export function recordFailure(): void {
 
     if (circuitBreaker.failures >= FAILURE_THRESHOLD) {
         circuitBreaker.isOpen = true;
-        console.warn("🔴 Redis circuit breaker OPEN after", circuitBreaker.failures, "failures. Bypassing cache for", RECOVERY_TIME_MS / 1000, "s");
+        log.warn("Redis", "Circuit breaker OPEN, bypassing cache", { failures: circuitBreaker.failures, recoverySeconds: RECOVERY_TIME_MS / 1000 });
     }
 }
 
@@ -69,7 +70,7 @@ function isCircuitOpen(): boolean {
     const timeSinceLastFailure = Date.now() - circuitBreaker.lastFailure;
     if (timeSinceLastFailure >= RECOVERY_TIME_MS) {
         // Half-open: allow one request through to test
-        console.log("🟡 Redis circuit breaker HALF-OPEN - testing connection...");
+        log.info("Redis", "Circuit breaker HALF-OPEN, testing connection");
         circuitBreaker.isOpen = false;
         circuitBreaker.failures = FAILURE_THRESHOLD - 1; // One more failure will re-open
         return false;
@@ -90,11 +91,7 @@ export function getRedis(): Redis | null {
 
     // Return null if Redis is not configured (graceful degradation)
     if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-        if (process.env.NODE_ENV === "development") {
-            console.warn(
-                "⚠️ Redis not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN for caching."
-            );
-        }
+        log.debug("Redis", "Not configured, caching disabled");
         return null;
     }
 

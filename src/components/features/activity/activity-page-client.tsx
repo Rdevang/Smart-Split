@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ActivityFeed } from "./activity-feed";
 import { ActivityFilters, type ActivityFiltersState } from "./activity-filters";
 import type { ActivityWithDetails } from "@/services/activities.server";
+import { log } from "@/lib/console-logger";
 
 interface Group {
     id: string;
@@ -93,7 +94,7 @@ export function ActivityPageClient({
                 setHasMore(data.hasMore);
                 setPage(pageNum);
             } catch (error) {
-                console.error("Error fetching activities:", error);
+                log.error("Activity", "Failed to fetch activities", error);
             } finally {
                 setIsLoading(false);
                 setIsLoadingMore(false);

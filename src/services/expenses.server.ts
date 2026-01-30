@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
+import { log } from "@/lib/console-logger";
 
 type Expense = Database["public"]["Tables"]["expenses"]["Row"];
 type ExpenseSplit = Database["public"]["Tables"]["expense_splits"]["Row"];
@@ -117,7 +118,7 @@ export const expensesServerService = {
             .range(offset, offset + limit - 1);
 
         if (error || !expenses) {
-            console.error("Error fetching expenses:", error);
+            log.error("Expenses", "Failed to fetch expenses", error);
             return { data: [], total: 0, page, limit, hasMore: false };
         }
 
@@ -194,7 +195,7 @@ export const expensesServerService = {
             .range(offset, offset + limit - 1);
 
         if (error || !expenses) {
-            console.error("Error fetching user expenses:", error);
+            log.error("Expenses", "Failed to fetch user expenses", error);
             return { data: [], total: 0, page, limit, hasMore: false };
         }
 
@@ -324,7 +325,7 @@ export const expensesServerService = {
             .single();
 
         if (error || !expense) {
-            console.error("Error fetching expense:", error);
+            log.error("Expenses", "Failed to fetch expense", error);
             return null;
         }
 
@@ -347,7 +348,7 @@ export const expensesServerService = {
             .eq("group_id", groupId);
 
         if (error) {
-            console.error("Error counting expenses:", error);
+            log.error("Expenses", "Failed to count expenses", error);
             return 0;
         }
 

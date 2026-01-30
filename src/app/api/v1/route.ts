@@ -13,26 +13,27 @@
  */
 
 import { NextResponse } from "next/server";
+import { createRoute } from "@/lib/api";
 
 export const runtime = "edge";
 
-export async function GET() {
-    return NextResponse.json({
-        version: "v1",
-        status: "active",
-        deprecation: null,
-        documentation: "/docs/api/v1",
-        endpoints: {
-            health: "/api/v1/health",
-            groups: "/api/v1/groups",
-            expenses: "/api/v1/expenses",
-            settlements: "/api/v1/settlements",
-        },
-    }, {
-        headers: {
-            "X-API-Version": "v1",
-            "X-API-Deprecation-Notice": "none",
-        },
+export const GET = createRoute()
+    .handler(async () => {
+        return NextResponse.json({
+            version: "v1",
+            status: "active",
+            deprecation: null,
+            documentation: "/docs/api/v1",
+            endpoints: {
+                health: "/api/v1/health",
+                groups: "/api/v1/groups",
+                expenses: "/api/v1/expenses",
+                settlements: "/api/v1/settlements",
+            },
+        }, {
+            headers: {
+                "X-API-Version": "v1",
+                "X-API-Deprecation-Notice": "none",
+            },
+        });
     });
-}
-

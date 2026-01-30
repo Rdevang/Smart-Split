@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 import { getSettlementsWithNamesCore, type SettlementWithNames } from "@/services/shared/settlements";
+import { log } from "@/lib/console-logger";
 
 type Group = Database["public"]["Tables"]["groups"]["Row"];
 type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
@@ -88,7 +89,7 @@ export const groupsServerService = {
             .eq("user_id", userId);
 
         if (memberError || !memberGroups) {
-            console.error("Error fetching memberships:", memberError);
+            log.error("Groups", "Failed to fetch memberships", memberError);
             return { data: [], total: 0, page, limit, hasMore: false };
         }
 
@@ -127,7 +128,7 @@ export const groupsServerService = {
             .range(offset, offset + limit - 1);
 
         if (groupsError || !groups) {
-            console.error("Error fetching groups:", groupsError);
+            log.error("Groups", "Failed to fetch groups", groupsError);
             return { data: [], total: 0, page, limit, hasMore: false };
         }
 
@@ -209,7 +210,7 @@ export const groupsServerService = {
             .single();
 
         if (error || !group) {
-            console.error("Error fetching group:", error);
+            log.error("Groups", "Failed to fetch group", error);
             return null;
         }
 
@@ -255,7 +256,7 @@ export const groupsServerService = {
         });
 
         if (error) {
-            console.error("Error fetching balances:", error);
+            log.error("Groups", "Failed to fetch balances", error);
             return [];
         }
 
@@ -275,7 +276,7 @@ export const groupsServerService = {
         });
 
         if (error) {
-            console.error("Error checking admin status:", error);
+            log.error("Groups", "Failed to check admin status", error);
             return false;
         }
 
@@ -294,7 +295,7 @@ export const groupsServerService = {
         });
 
         if (error) {
-            console.error("Error checking membership:", error);
+            log.error("Groups", "Failed to check membership", error);
             return false;
         }
 
@@ -313,7 +314,7 @@ export const groupsServerService = {
             .eq("user_id", userId);
 
         if (error) {
-            console.error("Error counting groups:", error);
+            log.error("Groups", "Failed to count groups", error);
             return 0;
         }
 

@@ -12,6 +12,7 @@ import { groupsService } from "@/services/groups";
 import { formatCurrency } from "@/lib/currency";
 import { openUpiPayment, isValidUpiId, generateUpiUrl } from "@/lib/upi";
 import { sendPaymentReminder } from "@/app/(dashboard)/actions";
+import { log } from "@/lib/console-logger";
 
 interface ExpenseSplit {
     user_id: string | null;
@@ -71,7 +72,7 @@ function getRawDebtsFromExpenses(expenses: Expense[]): SimplifiedPayment[] {
         for (const split of expense.splits || []) {
             // Skip settled splits - they're already paid
             if (split.is_settled) continue;
-            
+
             const participantId = split.user_id || split.placeholder_id;
             if (!participantId || participantId === payerId) continue;
 
@@ -219,7 +220,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
     // Uses server API to decrypt encrypted UPI IDs
     useEffect(() => {
         let mounted = true;
-        
+
         const fetchUpiIds = async () => {
             const payeeIds = payments
                 .filter(p => p.from_user_id === currentUserId && !p.to_is_placeholder)
@@ -231,7 +232,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
             for (const payeeId of uniquePayeeIds) {
                 // Check if component is still mounted before each fetch
                 if (!mounted) return;
-                
+
                 try {
                     // Fetch decrypted UPI ID from server API
                     const response = await fetch(`/api/upi/${payeeId}`);
@@ -255,7 +256,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
         if (payments.length > 0) {
             fetchUpiIds();
         }
-        
+
         return () => {
             mounted = false;
         };
@@ -340,7 +341,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                 showError(result.error || "Failed to record settlement");
             }
         } catch (err) {
-            console.error("Settlement error:", err);
+            log.error("Settlement", "Failed to record settlement", err);
             showError("An error occurred while recording the settlement");
         } finally {
             setIsSettlingFromModal(false);
@@ -387,7 +388,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                 showError(result.error || "Failed to send reminder");
             }
         } catch (err) {
-            console.error("Failed to send reminder:", err);
+            log.error("Settlement", "Failed to send reminder", err);
             showError("Failed to send reminder");
         } finally {
             setRemindingUser(null);
@@ -448,7 +449,7 @@ export function SimplifiedDebts({ groupId, balances, expenses, currentUserId, cu
                     showError(result.error || "Failed to record settlement");
                 }
             } catch (error) {
-                console.error("Failed to settle:", error);
+                log.error("Settlement", "Failed to settle", error);
                 showError("An unexpected error occurred");
             } finally {
                 setPendingPaymentKey(null);

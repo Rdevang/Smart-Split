@@ -4,6 +4,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
+import { log } from "./console-logger";
 
 // Encryption configuration
 const ALGORITHM = "aes-256-gcm";
@@ -56,7 +57,7 @@ export function encrypt(plaintext: string): string {
         // Format: prefix:iv:authTag:ciphertext
         return `${ENCRYPTED_PREFIX}${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted}`;
     } catch (error) {
-        console.error("Encryption failed:", error);
+        log.error("Encryption", "Encryption failed", error);
         throw new Error("Failed to encrypt data");
     }
 }
@@ -97,7 +98,7 @@ export function decrypt(ciphertext: string): string | null {
 
         return decrypted;
     } catch (error) {
-        console.error("Decryption failed:", error);
+        log.error("Encryption", "Decryption failed", error);
         // Return null on decryption failure so callers can handle it properly
         return null;
     }

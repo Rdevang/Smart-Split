@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Star, Quote } from "lucide-react";
+import { log } from "@/lib/console-logger";
 
 interface Review {
     id: string;
@@ -77,7 +78,7 @@ export function Testimonials() {
                     }
                 }
             } catch (error) {
-                console.error("Failed to fetch reviews:", error);
+                log.error("Reviews", "Failed to fetch reviews", error);
                 // Keep fallback reviews
             } finally {
                 setIsLoading(false);

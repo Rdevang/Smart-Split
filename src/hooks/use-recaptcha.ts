@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { log } from "@/lib/console-logger";
 
 // ============================================
 // TYPES
@@ -56,7 +57,7 @@ let isScriptLoaded = false;
 // Debug logger
 function debugLog(message: string, data?: unknown) {
     if (DEBUG) {
-        console.log(`[reCAPTCHA] ${message}`, data ?? "");
+        log.debug("reCAPTCHA", message, data);
     }
 }
 
@@ -103,7 +104,7 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
                     setIsEnabled(false);
                     setIsLoading(false);
                     setIsReady(true);
-                    console.warn("[reCAPTCHA] Could not fetch settings:", err);
+                    log.warn("reCAPTCHA", "Could not fetch settings", err);
                 }
             }
         }
@@ -206,12 +207,12 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
             }
 
             if (!siteKey) {
-                console.error("[reCAPTCHA] Site key not configured");
+                log.error("reCAPTCHA", "Site key not configured");
                 return null;
             }
 
             if (!isReady || !window.grecaptcha) {
-                console.error("[reCAPTCHA] Not ready yet. isReady:", isReady, "grecaptcha:", !!window.grecaptcha);
+                log.error("reCAPTCHA", "Not ready yet", { isReady, hasGrecaptcha: !!window.grecaptcha });
                 return null;
             }
 
@@ -223,7 +224,7 @@ export function useRecaptcha(options: UseRecaptchaOptions = {}): UseRecaptchaRet
                 debugLog(`✅ Token received in ${duration}ms:`, token.substring(0, 30) + "...");
                 return token;
             } catch (err) {
-                console.error("[reCAPTCHA] Execution failed:", err);
+                log.error("reCAPTCHA", "Execution failed", err);
                 return null;
             }
         },

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MapPin, Navigation, Loader2, X, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/console-logger";
 
 export interface LocationData {
     name: string;
@@ -144,7 +145,7 @@ export function LocationInput({
                 }
             }
         } catch (err) {
-            console.warn("Location search failed:", err);
+            log.warn("Location", "Search failed", err);
             setResults([]);
         } finally {
             setIsSearching(false);

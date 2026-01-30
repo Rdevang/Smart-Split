@@ -1,28 +1,70 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+/**
+ * Email Preferences API
+ * 
+ * GET /api/settings/email-preferences - Get user's email preferences
+ * POST /api/settings/email-preferences - Update user's email preferences
+ */
 
-export async function POST(request: NextRequest) {
-    try {
-        const supabase = await createClient();
+import { z } from "zod";
+import { createRoute, withAuth, withValidation, ApiResponse, ApiError } from "@/lib/api";
+import { log } from "@/lib/console-logger";
 
-        // Verify user is authenticated
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// Default preferences for new users
+const DEFAULT_PREFERENCES = {
+    payment_reminders: true,
+    settlement_requests: true,
+    settlement_updates: true,
+    group_invitations: true,
+    expense_added: false,
+    weekly_digest: true,
+};
+
+const UpdatePreferencesSchema = z.object({
+    userId: z.union([z.literal("current"), z.string().uuid()]).optional(),
+    preferences: z.object({
+        payment_reminders: z.boolean().optional(),
+        settlement_requests: z.boolean().optional(),
+        settlement_updates: z.boolean().optional(),
+        group_invitations: z.boolean().optional(),
+        expense_added: z.boolean().optional(),
+        weekly_digest: z.boolean().optional(),
+    }),
+});
+
+export const GET = createRoute()
+    .use(withAuth())
+    .handler(async (ctx) => {
+        const { data: profile, error } = await ctx.supabase
+            .from("profiles")
+            .select("email_preferences")
+            .eq("id", ctx.user.id)
+            .single();
+
+        if (error) {
+            log.error("Settings", "Email preferences fetch failed", error);
+            return ApiError.internal("Failed to fetch preferences");
         }
 
-        const body = await request.json();
-        const { userId, preferences } = body;
+        return ApiResponse.success({
+            preferences: profile?.email_preferences || DEFAULT_PREFERENCES,
+        });
+    });
 
-        // Use authenticated user's ID if "current" is passed
-        const targetUserId = userId === "current" ? user.id : userId;
+export const POST = createRoute()
+    .use(withAuth())
+    .use(withValidation(UpdatePreferencesSchema))
+    .handler(async (ctx) => {
+        const { userId, preferences } = ctx.validated;
+
+        // Use authenticated user's ID if "current" is passed or not provided
+        const targetUserId = !userId || userId === "current" ? ctx.user.id : userId;
 
         // Verify user can only update their own preferences
-        if (targetUserId !== user.id) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        if (targetUserId !== ctx.user.id) {
+            return ApiError.forbidden("You can only update your own preferences");
         }
 
-        // Validate preferences structure
+        // Build sanitized preferences (only allow valid keys)
         const validKeys = [
             "payment_reminders",
             "settlement_requests",
@@ -30,7 +72,7 @@ export async function POST(request: NextRequest) {
             "group_invitations",
             "expense_added",
             "weekly_digest",
-        ];
+        ] as const;
 
         const sanitizedPreferences: Record<string, boolean> = {};
         for (const key of validKeys) {
@@ -38,61 +80,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Update preferences
-        const { error: updateError } = await supabase
+        const { error } = await ctx.supabase
             .from("profiles")
             .update({ email_preferences: sanitizedPreferences })
             .eq("id", targetUserId);
 
-        if (updateError) {
-            console.error("[EmailPreferences] Update failed:", updateError);
-            return NextResponse.json({ error: "Failed to update preferences" }, { status: 500 });
+        if (error) {
+            log.error("Settings", "Email preferences update failed", error);
+            return ApiError.internal("Failed to update preferences");
         }
 
-        return NextResponse.json({ success: true });
-    } catch (error) {
-        console.error("[EmailPreferences] Error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-}
-
-export async function GET() {
-    try {
-        const supabase = await createClient();
-
-        // Verify user is authenticated
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        // Get user's email preferences
-        const { data: profile, error: profileError } = await supabase
-            .from("profiles")
-            .select("email_preferences")
-            .eq("id", user.id)
-            .single();
-
-        if (profileError) {
-            console.error("[EmailPreferences] Fetch failed:", profileError);
-            return NextResponse.json({ error: "Failed to fetch preferences" }, { status: 500 });
-        }
-
-        // Default preferences if not set
-        const defaultPreferences = {
-            payment_reminders: true,
-            settlement_requests: true,
-            settlement_updates: true,
-            group_invitations: true,
-            expense_added: false,
-            weekly_digest: true,
-        };
-
-        return NextResponse.json({
-            preferences: profile?.email_preferences || defaultPreferences,
-        });
-    } catch (error) {
-        console.error("[EmailPreferences] Error:", error);
-        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-    }
-}
-
+        return ApiResponse.success({ success: true });
+    });

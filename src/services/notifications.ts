@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { log } from "@/lib/console-logger";
 
 export interface Notification {
     id: string;
@@ -48,7 +49,7 @@ export const notificationsService = {
             .limit(limit);
 
         if (error) {
-            console.error("Error fetching notifications:", error);
+            log.error("Notifications", "Failed to fetch notifications", error);
             return [];
         }
 
@@ -68,7 +69,7 @@ export const notificationsService = {
             .eq("is_read", false);
 
         if (error) {
-            console.error("Error fetching unread count:", error);
+            log.error("Notifications", "Failed to fetch unread count", error);
             return 0;
         }
 
@@ -156,7 +157,7 @@ export const notificationsService = {
         });
 
         if (error) {
-            console.error("Error creating notification:", error);
+            log.error("Notifications", "Failed to create notification", error);
             return false;
         }
 
@@ -183,7 +184,7 @@ export const notificationsService = {
             .order("created_at", { ascending: false });
 
         if (error) {
-            console.error("Error fetching invitations:", error);
+            log.error("Notifications", "Failed to fetch invitations", error);
             return [];
         }
 

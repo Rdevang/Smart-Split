@@ -1,7 +1,3 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { decrypt } from "@/lib/encryption";
-
 /**
  * GET /api/upi/[userId]
  * Fetches and decrypts UPI ID for a user
@@ -11,101 +7,98 @@ import { decrypt } from "@/lib/encryption";
  * 2. Requesting user shares at least one group with the target user
  *    (so they can pay them for group expenses)
  */
-export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ userId: string }> }
-) {
-    const { userId } = await params;
 
-    const supabase = await createClient();
+import { createRoute, withAuth, ApiResponse, ApiError } from "@/lib/api";
+import { decrypt } from "@/lib/encryption";
+import { log } from "@/lib/console-logger";
 
-    // Verify user is authenticated
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+/**
+ * Helper to get decrypted UPI ID, handling both encrypted and plain text
+ */
+function getDecryptedUpiId(storedValue: string | null): string | null {
+    if (!storedValue) return null;
+
+    const decrypted = decrypt(storedValue);
+
+    // If decryption returned null and it's not encrypted, return as-is
+    if (!decrypted && !storedValue.startsWith("enc:v1:")) {
+        return storedValue;
     }
 
-    // Allow users to fetch their own UPI ID
-    if (user.id === userId) {
-        const { data, error } = await supabase
+    return decrypted;
+}
+
+export const GET = createRoute()
+    .use(withAuth())
+    .handler(async (ctx) => {
+        const targetUserId = ctx.params.userId;
+
+        if (!targetUserId) {
+            return ApiError.badRequest("User ID is required");
+        }
+
+        // Allow users to fetch their own UPI ID
+        if (ctx.user.id === targetUserId) {
+            const { data, error } = await ctx.supabase
+                .from("profiles")
+                .select("upi_id")
+                .eq("id", targetUserId)
+                .single();
+
+            if (error || !data?.upi_id) {
+                return ApiResponse.success({ upi_id: null });
+            }
+
+            return ApiResponse.success({ upi_id: getDecryptedUpiId(data.upi_id) });
+        }
+
+        // For other users, check if they share a group
+        // Get groups where the requesting user is a member
+        const { data: requesterGroups } = await ctx.supabase
+            .from("group_members")
+            .select("group_id")
+            .eq("user_id", ctx.user.id);
+
+        if (!requesterGroups || requesterGroups.length === 0) {
+            return ApiError.forbidden("You can only view UPI IDs of users in your shared groups");
+        }
+
+        const requesterGroupIds = requesterGroups.map(g => g.group_id);
+
+        // Check if target user is in any of those groups
+        const { data: sharedMembership } = await ctx.supabase
+            .from("group_members")
+            .select("group_id")
+            .eq("user_id", targetUserId)
+            .in("group_id", requesterGroupIds)
+            .limit(1);
+
+        if (!sharedMembership || sharedMembership.length === 0) {
+            return ApiError.forbidden("You can only view UPI IDs of users in your shared groups");
+        }
+
+        // Users share a group - fetch and return UPI ID
+        const { data, error } = await ctx.supabase
             .from("profiles")
             .select("upi_id")
-            .eq("id", userId)
+            .eq("id", targetUserId)
             .single();
 
-        if (error || !data?.upi_id) {
-            return NextResponse.json({ upi_id: null });
+        if (error) {
+            return ApiError.notFound("User");
         }
 
-        const decrypted = decrypt(data.upi_id);
-        // Handle plain text or failed decryption
-        if (!decrypted && data.upi_id && !data.upi_id.startsWith("enc:v1:")) {
-            return NextResponse.json({ upi_id: data.upi_id });
+        if (!data?.upi_id) {
+            return ApiResponse.success({ upi_id: null });
         }
-        return NextResponse.json({ upi_id: decrypted || null });
-    }
 
-    // For other users, check if they share a group
-    // Get groups where the requesting user is a member
-    const { data: requesterGroups } = await supabase
-        .from("group_members")
-        .select("group_id")
-        .eq("user_id", user.id);
+        // Decrypt UPI ID
+        const decryptedUpiId = getDecryptedUpiId(data.upi_id);
 
-    if (!requesterGroups || requesterGroups.length === 0) {
-        return NextResponse.json(
-            { error: "You can only view UPI IDs of users in your shared groups" },
-            { status: 403 }
-        );
-    }
-
-    const requesterGroupIds = requesterGroups.map(g => g.group_id);
-
-    // Check if target user is in any of those groups
-    const { data: sharedMembership } = await supabase
-        .from("group_members")
-        .select("group_id")
-        .eq("user_id", userId)
-        .in("group_id", requesterGroupIds)
-        .limit(1);
-
-    if (!sharedMembership || sharedMembership.length === 0) {
-        return NextResponse.json(
-            { error: "You can only view UPI IDs of users in your shared groups" },
-            { status: 403 }
-        );
-    }
-
-    // Users share a group - fetch and return UPI ID
-    const { data, error } = await supabase
-        .from("profiles")
-        .select("upi_id")
-        .eq("id", userId)
-        .single();
-
-    if (error) {
-        return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
-    if (!data?.upi_id) {
-        return NextResponse.json({ upi_id: null });
-    }
-
-    // Decrypt UPI ID (server-side only)
-    // Handle both encrypted and plain text UPI IDs
-    const decryptedUpiId = decrypt(data.upi_id);
-    
-    // If decryption returned null (failure), check if it's plain text
-    if (!decryptedUpiId && data.upi_id) {
-        // If the stored value doesn't start with encryption prefix, it might be plain text
-        if (!data.upi_id.startsWith("enc:v1:")) {
-            // Return as-is (plain text UPI ID)
-            return NextResponse.json({ upi_id: data.upi_id });
+        if (!decryptedUpiId && data.upi_id.startsWith("enc:v1:")) {
+            log.error("UPI", "Decryption failed for UPI ID");
+            return ApiResponse.success({ upi_id: null, error: "Decryption failed" });
         }
-        // Decryption actually failed
-        console.error("UPI ID decryption failed for user:", userId);
-        return NextResponse.json({ upi_id: null, error: "Decryption failed" });
-    }
 
-    return NextResponse.json({ upi_id: decryptedUpiId });
-}
+        return ApiResponse.success({ upi_id: decryptedUpiId });
+    });

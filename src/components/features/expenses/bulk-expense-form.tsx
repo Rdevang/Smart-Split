@@ -12,6 +12,7 @@ import { useToast } from "@/components/ui/toast";
 import { onExpenseMutation, getEncryptedGroupUrl } from "@/app/(dashboard)/actions";
 import type { Database } from "@/types/database";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/console-logger";
 
 type ExpenseCategory = Database["public"]["Enums"]["expense_category"];
 
@@ -250,7 +251,7 @@ export function BulkExpenseForm({ group, userId }: BulkExpenseFormProps) {
             router.push(groupUrl); // Then navigate
 
         } catch (error) {
-            console.error("Bulk create error:", error);
+            log.error("Expenses", "Bulk create failed", error);
             toast.error(error instanceof Error ? error.message : "Failed to create expenses");
         } finally {
             setIsSubmitting(false);

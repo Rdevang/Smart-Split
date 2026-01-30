@@ -17,6 +17,8 @@
  *   return ApiError.badRequest("Invalid input");
  */
 
+import { apiLog } from "./console-logger";
+
 import { NextResponse } from "next/server";
 
 // ============================================
@@ -222,7 +224,7 @@ export function withErrorHandler<T extends unknown[]>(
         try {
             return await handler(...args);
         } catch (error) {
-            console.error("API Error:", error);
+            apiLog.error("Unhandled error", error);
             return ApiError.internal();
         }
     };

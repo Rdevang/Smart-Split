@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, CameraOff, RefreshCw, SwitchCamera } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { log } from "@/lib/console-logger";
 
 interface QRScannerProps {
     onScan: (code: string) => void;
@@ -146,7 +147,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
                 setStatus("scanning");
             }
         } catch (err) {
-            console.error("Scanner start error:", err);
+            log.error("QRScanner", "Failed to start scanner", err);
             if (mountedRef.current) {
                 setStatus("idle");
                 const msg = err instanceof Error ? err.message : String(err);

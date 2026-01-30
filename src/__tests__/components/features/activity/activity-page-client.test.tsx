@@ -244,10 +244,13 @@ describe("ActivityPageClient", () => {
         await user.click(screen.getByRole("button", { name: /show more/i }));
 
         await waitFor(() => {
-            expect(consoleSpy).toHaveBeenCalledWith(
-                "Error fetching activities:",
-                expect.any(Error)
+            // Logger formats as: "[timestamp] [Module] Message" then error as second arg
+            expect(consoleSpy).toHaveBeenCalled();
+            const calls = consoleSpy.mock.calls;
+            const errorCall = calls.find((call: unknown[]) => 
+                typeof call[0] === "string" && call[0].includes("[Activity]")
             );
+            expect(errorCall).toBeTruthy();
         });
 
         consoleSpy.mockRestore();

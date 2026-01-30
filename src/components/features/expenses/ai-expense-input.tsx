@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import type { ParsedExpense, ReceiptData } from "@/lib/ai-client";
+import { log } from "@/lib/console-logger";
 
 interface AIUsage {
     used: number;
@@ -47,7 +48,7 @@ export function AIExpenseInput({
                     setUsage(data.usage);
                 }
             } catch (error) {
-                console.error("Failed to check AI usage:", error);
+                log.error("AI", "Failed to check usage", error);
             } finally {
                 setLoadingUsage(false);
             }
@@ -124,7 +125,7 @@ export function AIExpenseInput({
         };
 
         recognition.onerror = (event) => {
-            console.error("Speech recognition error:", event.error);
+            log.error("AI", "Speech recognition error", { error: event.error });
             setIsListening(false);
             toast({
                 title: "Voice error",
@@ -187,7 +188,7 @@ export function AIExpenseInput({
                 variant: "success",
             });
         } catch (error) {
-            console.error("Parse error:", error);
+            log.error("AI", "Parse error", error);
             const errorMessage = error instanceof Error ? error.message : "Failed to parse expense";
             toast({
                 title: "Error",
@@ -226,7 +227,7 @@ export function AIExpenseInput({
                 variant: "success",
             });
         } catch (error) {
-            console.error("Scan error:", error);
+            log.error("AI", "Receipt scan error", error);
             toast({
                 title: "Error",
                 message: "Failed to scan receipt. Please try again.",

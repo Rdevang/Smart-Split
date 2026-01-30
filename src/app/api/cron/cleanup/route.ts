@@ -1,7 +1,3 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
-
 /**
  * POST /api/cron/cleanup
  * 
@@ -14,152 +10,135 @@ import { logger } from "@/lib/logger";
  * 3. Purge old audit logs (older than 1 year)
  * 4. Clean up orphaned files in storage
  */
-export async function POST(request: Request) {
-    // Verify this is a legitimate cron request from Vercel
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
 
-    // In production, require CRON_SECRET for authentication
-    if (process.env.NODE_ENV === "production") {
-        if (!cronSecret) {
-            logger.error("CRON_SECRET not configured for production");
-            return NextResponse.json(
-                { error: "Cron not configured" },
-                { status: 500 }
-            );
-        }
+import { NextResponse } from "next/server";
+import { createRoute, withCronAuth, ApiResponse, ApiError } from "@/lib/api";
+import { logger } from "@/lib/logger";
 
-        if (authHeader !== `Bearer ${cronSecret}`) {
-            logger.warn("Unauthorized cron attempt", {
-                authHeader: authHeader ? "present" : "missing",
-            });
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
-        }
-    }
-
-    const results: Record<string, unknown> = {
-        startedAt: new Date().toISOString(),
-        tasks: {},
-    };
-
-    try {
-        const supabase = await createClient();
-
-        // Task 1: Clean up soft-deleted records (30+ days old)
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const deleteThreshold = thirtyDaysAgo.toISOString();
-
-        // Delete old groups
-        const { data: deletedGroupsData } = await supabase
-            .from("groups")
-            .delete()
-            .lt("deleted_at", deleteThreshold)
-            .not("deleted_at", "is", null)
-            .select("id");
-        const deletedGroups = deletedGroupsData?.length || 0;
-
-        // Delete old expenses
-        const { data: deletedExpensesData } = await supabase
-            .from("expenses")
-            .delete()
-            .lt("deleted_at", deleteThreshold)
-            .not("deleted_at", "is", null)
-            .select("id");
-        const deletedExpenses = deletedExpensesData?.length || 0;
-
-        // Delete old settlements
-        const { data: deletedSettlementsData } = await supabase
-            .from("settlements")
-            .delete()
-            .lt("deleted_at", deleteThreshold)
-            .not("deleted_at", "is", null)
-            .select("id");
-        const deletedSettlements = deletedSettlementsData?.length || 0;
-
-        results.tasks = {
-            softDeletes: {
-                groups: deletedGroups,
-                expenses: deletedExpenses,
-                settlements: deletedSettlements,
-            },
+const handler = createRoute()
+    .use(withCronAuth())
+    .handler(async (ctx) => {
+        const results: Record<string, unknown> = {
+            startedAt: new Date().toISOString(),
+            tasks: {},
         };
 
-        // Task 2: Clean up old audit logs (1 year+)
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        try {
+            // Task 1: Clean up soft-deleted records (30+ days old)
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const deleteThreshold = thirtyDaysAgo.toISOString();
 
-        const { data: deletedAuditLogsData } = await supabase
-            .from("audit_logs")
-            .delete()
-            .lt("created_at", oneYearAgo.toISOString())
-            .select("id");
+            // Delete old groups
+            const { data: deletedGroupsData } = await ctx.supabase
+                .from("groups")
+                .delete()
+                .lt("deleted_at", deleteThreshold)
+                .not("deleted_at", "is", null)
+                .select("id");
+            const deletedGroups = deletedGroupsData?.length || 0;
 
-        (results.tasks as Record<string, unknown>).auditLogs = {
-            deleted: deletedAuditLogsData?.length || 0,
-        };
+            // Delete old expenses
+            const { data: deletedExpensesData } = await ctx.supabase
+                .from("expenses")
+                .delete()
+                .lt("deleted_at", deleteThreshold)
+                .not("deleted_at", "is", null)
+                .select("id");
+            const deletedExpenses = deletedExpensesData?.length || 0;
 
-        // Task 3: Clean up old activities (90 days+)
-        const ninetyDaysAgo = new Date();
-        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+            // Delete old settlements
+            const { data: deletedSettlementsData } = await ctx.supabase
+                .from("settlements")
+                .delete()
+                .lt("deleted_at", deleteThreshold)
+                .not("deleted_at", "is", null)
+                .select("id");
+            const deletedSettlements = deletedSettlementsData?.length || 0;
 
-        const { data: deletedActivitiesData } = await supabase
-            .from("activities")
-            .delete()
-            .lt("created_at", ninetyDaysAgo.toISOString())
-            .select("id");
+            results.tasks = {
+                softDeletes: {
+                    groups: deletedGroups,
+                    expenses: deletedExpenses,
+                    settlements: deletedSettlements,
+                },
+            };
 
-        (results.tasks as Record<string, unknown>).activities = {
-            deleted: deletedActivitiesData?.length || 0,
-        };
+            // Task 2: Clean up old audit logs (1 year+)
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-        // Task 4: Clean up expired notifications (30 days+)
-        const { data: deletedNotificationsData } = await supabase
-            .from("notifications")
-            .delete()
-            .eq("is_read", true)
-            .lt("created_at", deleteThreshold)
-            .select("id");
+            const { data: deletedAuditLogsData } = await ctx.supabase
+                .from("audit_logs")
+                .delete()
+                .lt("created_at", oneYearAgo.toISOString())
+                .select("id");
 
-        (results.tasks as Record<string, unknown>).notifications = {
-            deleted: deletedNotificationsData?.length || 0,
-        };
+            (results.tasks as Record<string, unknown>).auditLogs = {
+                deleted: deletedAuditLogsData?.length || 0,
+            };
 
-        results.completedAt = new Date().toISOString();
-        results.success = true;
+            // Task 3: Clean up old activities (90 days+)
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-        logger.info("Cleanup cron completed successfully", results);
+            const { data: deletedActivitiesData } = await ctx.supabase
+                .from("activities")
+                .delete()
+                .lt("created_at", ninetyDaysAgo.toISOString())
+                .select("id");
 
-        return NextResponse.json(results);
+            (results.tasks as Record<string, unknown>).activities = {
+                deleted: deletedActivitiesData?.length || 0,
+            };
 
-    } catch (error) {
-        logger.error("Cleanup cron failed", error instanceof Error ? error : new Error(String(error)));
+            // Task 4: Clean up expired notifications (30 days+)
+            const { data: deletedNotificationsData } = await ctx.supabase
+                .from("notifications")
+                .delete()
+                .eq("is_read", true)
+                .lt("created_at", deleteThreshold)
+                .select("id");
 
-        return NextResponse.json(
-            {
-                error: "Cleanup failed",
-                details: process.env.NODE_ENV === "development"
+            (results.tasks as Record<string, unknown>).notifications = {
+                deleted: deletedNotificationsData?.length || 0,
+            };
+
+            results.completedAt = new Date().toISOString();
+            results.success = true;
+
+            logger.info("Cleanup cron completed successfully", results);
+
+            return ApiResponse.success(results);
+
+        } catch (error) {
+            logger.error("Cleanup cron failed", error instanceof Error ? error : new Error(String(error)));
+
+            return ApiError.internal(
+                process.env.NODE_ENV === "development"
                     ? (error instanceof Error ? error.message : String(error))
-                    : undefined,
-            },
-            { status: 500 }
-        );
-    }
-}
+                    : "Cleanup failed"
+            );
+        }
+    });
 
-// Also support GET for manual testing in development
-export async function GET(request: Request) {
-    if (process.env.NODE_ENV === "production") {
-        return NextResponse.json(
-            { error: "Use POST for cron jobs" },
-            { status: 405 }
-        );
-    }
+// POST is the primary method for cron jobs
+export const POST = handler;
 
-    // In development, allow GET for testing
-    return POST(request);
-}
+// GET allowed in development for manual testing
+export const GET = createRoute()
+    .handler(async () => {
+        if (process.env.NODE_ENV === "production") {
+            return NextResponse.json(
+                { error: "Use POST for cron jobs" },
+                { status: 405 }
+            );
+        }
 
+        // In development, delegate to POST handler
+        // Note: This is a simplified handler for dev testing
+        return ApiResponse.success({
+            message: "Use POST to run cleanup in development",
+            hint: "curl -X POST http://localhost:3000/api/cron/cleanup",
+        });
+    });

@@ -1,5 +1,6 @@
 import { getRedis, recordFailure, recordSuccess, REDIS_TIMEOUT_MS } from "./redis";
 import { compressIfNeeded, decompressIfNeeded, COMPRESSION_THRESHOLD } from "./compression";
+import { cacheLog } from "./console-logger";
 
 // ============================================
 // REQUEST COALESCING (Prevents Cache Stampede)
@@ -384,7 +385,7 @@ export async function cached<T>(
         recordFailure();
 
         // FAIL OPEN: On any Redis error, fall back to database
-        console.error("[Cache] Error for key:", key, error);
+        cacheLog.error("Error for key: " + key, error);
         return fetcher();
     }
 }
@@ -511,7 +512,7 @@ export async function cachedCoalesced<T>(
         }
 
         // Timeout waiting - fetch ourselves (fallback)
-        console.warn("[Cache] Coalesce timeout, fetching directly for key:", key);
+        cacheLog.warn("Coalesce timeout, fetching directly");
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -641,7 +642,7 @@ function storeInCacheBackground<T>(
                 await redis.set(key, serializedEntry, { ex: jitteredTTL });
             }
         } catch (error) {
-            console.error("[Cache] Background store failed for key:", key, error);
+            cacheLog.error("Background store failed for key: " + key, error);
         }
     })();
 }
@@ -689,7 +690,7 @@ function refreshInBackground<T>(
                 await redis.set(key, serializedEntry, { ex: jitteredTTL });
             }
         } catch (error) {
-            console.error("[Cache] Background refresh failed for key:", key, error);
+            cacheLog.error("Background refresh failed for key: " + key, error);
         } finally {
             redis.del(refreshKey).catch(() => { });
         }
@@ -709,7 +710,7 @@ export async function invalidateCache(key: string): Promise<void> {
     try {
         await redis.del(vKey);
     } catch (error) {
-        console.error("[Cache] Failed to invalidate key:", vKey, error);
+        cacheLog.error("Failed to invalidate key: " + vKey, error);
     }
 }
 
@@ -739,7 +740,7 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
             await redis.del(...keysToDelete);
         }
     } catch (error) {
-        console.error("[Cache] Failed to invalidate pattern:", pattern, error);
+        cacheLog.error("Failed to invalidate pattern: " + pattern, error);
     }
 }
 
@@ -750,7 +751,7 @@ export async function invalidateCachePattern(pattern: string): Promise<void> {
 export async function invalidateGroupCache(groupId: string): Promise<void> {
     const redis = getRedis();
     if (!redis) {
-        console.log("[Cache] No Redis connection, skipping invalidation for group:", groupId);
+        cacheLog.debug("No Redis connection, skipping invalidation");
         return;
     }
 
@@ -775,9 +776,9 @@ export async function invalidateGroupCache(groupId: string): Promise<void> {
 
     try {
         const result = await redis.del(...keysToInvalidate);
-        console.log("[Cache] Invalidated", result, "keys for group:", groupId);
+        cacheLog.debug("Invalidated keys for group", { count: result });
     } catch (error) {
-        console.error("[Cache] Failed to invalidate group cache:", groupId, error);
+        cacheLog.error("Failed to invalidate group cache", error);
     }
 }
 
@@ -802,7 +803,7 @@ export async function invalidateUserCache(userId: string): Promise<void> {
     try {
         await redis.del(...keysToInvalidate);
     } catch (error) {
-        console.error("[Cache] Failed to invalidate user cache:", userId, error);
+        cacheLog.error("Failed to invalidate user cache", error);
     }
 }
 
@@ -824,7 +825,7 @@ export async function cacheMultiple<T>(
 
         await pipeline.exec();
     } catch (error) {
-        console.error("Failed to batch cache items:", error);
+        cacheLog.error("Failed to batch cache items", error);
     }
 }
 
@@ -838,7 +839,7 @@ export async function getCachedMultiple<T>(keys: string[]): Promise<(T | null)[]
     try {
         return await redis.mget<T[]>(...keys);
     } catch (error) {
-        console.error("Failed to get cached items:", error);
+        cacheLog.error("Failed to get cached items", error);
         return keys.map(() => null);
     }
 }

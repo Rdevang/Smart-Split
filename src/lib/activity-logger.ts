@@ -19,6 +19,7 @@
  *   });
  */
 
+import { dbLog } from "./console-logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ============================================
@@ -118,9 +119,9 @@ export async function logActivity(
         });
     } catch (error) {
         // Fire-and-forget: Log error but don't throw
-        console.error("[ActivityLogger] Failed to log activity:", {
+        dbLog.error("Failed to log activity", {
             action: input.action,
-            error: error instanceof Error ? error.message : error,
+            error: error instanceof Error ? error.message : String(error),
         });
     }
 }
@@ -151,9 +152,9 @@ export async function logActivities(
         await supabase.from("activities").insert(rows);
     } catch (error) {
         // Fire-and-forget: Log error but don't throw
-        console.error("[ActivityLogger] Failed to log bulk activities:", {
+        dbLog.error("Failed to log bulk activities", {
             count: input.activities.length,
-            error: error instanceof Error ? error.message : error,
+            error: error instanceof Error ? error.message : String(error),
         });
     }
 }

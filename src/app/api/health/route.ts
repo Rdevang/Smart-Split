@@ -1,7 +1,3 @@
-import { NextResponse } from "next/server";
-import { getRedis } from "@/lib/redis";
-import { getCacheHeaders } from "@/lib/cache-headers";
-
 /**
  * GET /api/health
  * General health check endpoint for monitoring services
@@ -12,11 +8,19 @@ import { getCacheHeaders } from "@/lib/cache-headers";
  * 
  * This prevents monitoring dashboards from showing "site down"
  * when only the origin server is having temporary issues.
+ * 
+ * NOTE: This route does NOT use the route builder as it needs to be
+ * as simple and reliable as possible for health checks.
  */
+
+import { NextResponse } from "next/server";
+import { getRedis } from "@/lib/redis";
+import { getCacheHeaders } from "@/lib/cache-headers";
+
 export async function GET() {
     const startTime = Date.now();
     const checks: Record<string, "healthy" | "degraded" | "unhealthy"> = {};
-    
+
     // Check Redis (optional, degraded if not available)
     const redis = getRedis();
     if (redis) {
@@ -29,14 +33,14 @@ export async function GET() {
     } else {
         checks.cache = "degraded"; // Not configured, but app works without it
     }
-    
+
     // Overall status
     const unhealthyCount = Object.values(checks).filter(s => s === "unhealthy").length;
     const degradedCount = Object.values(checks).filter(s => s === "degraded").length;
-    
+
     let status: "healthy" | "degraded" | "unhealthy";
     let httpStatus: number;
-    
+
     if (unhealthyCount > 0) {
         status = "unhealthy";
         httpStatus = 503; // Service Unavailable
@@ -47,10 +51,10 @@ export async function GET() {
         status = "healthy";
         httpStatus = 200;
     }
-    
+
     const responseTime = Date.now() - startTime;
     const isProduction = process.env.NODE_ENV === "production";
-    
+
     // SECURITY: Don't expose version and environment info in production
     // This prevents attackers from targeting known vulnerabilities
     const responseBody: Record<string, unknown> = {
@@ -59,16 +63,15 @@ export async function GET() {
         responseTime: `${responseTime}ms`,
         timestamp: new Date().toISOString(),
     };
-    
+
     // Only expose version/environment in non-production for debugging
     if (!isProduction) {
         responseBody.version = process.env.npm_package_version || "1.0.0";
         responseBody.environment = process.env.NODE_ENV || "development";
     }
-    
+
     return NextResponse.json(responseBody, {
         status: httpStatus,
         headers: getCacheHeaders("public-dynamic"),
     });
 }
-

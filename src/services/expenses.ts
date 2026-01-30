@@ -4,6 +4,7 @@ import { safeUuidList, ValidationSchemas } from "@/lib/validation";
 import { logger, SecurityEvents } from "@/lib/logger";
 import { isGroupMember, verifyExpenseAccess, verifySplitAccess } from "@/lib/auth-helpers";
 import { logActivity, logActivities, ActivityTypes } from "@/lib/activity-logger";
+import { log } from "@/lib/console-logger";
 
 type Expense = Database["public"]["Tables"]["expenses"]["Row"];
 type ExpenseSplit = Database["public"]["Tables"]["expense_splits"]["Row"];
@@ -106,7 +107,7 @@ export const expensesService = {
             .order("created_at", { ascending: false });
 
         if (error || !expenses) {
-            console.error("Error fetching expenses:", error);
+            log.error("Expenses", "Failed to fetch expenses", error);
             return [];
         }
 
@@ -134,7 +135,7 @@ export const expensesService = {
             .single();
 
         if (error || !expense) {
-            console.error("Error fetching expense:", error);
+            log.error("Expenses", "Failed to fetch expense", error);
             return null;
         }
 
@@ -151,7 +152,7 @@ export const expensesService = {
         // SECURITY: Validate userId is a valid UUID before using in query
         const userIdValidation = ValidationSchemas.uuid.safeParse(userId);
         if (!userIdValidation.success) {
-            console.error("Invalid user ID format:", userId);
+            log.warn("Expenses", "Invalid user ID format provided");
             return [];
         }
         const validUserId = userIdValidation.data;
@@ -196,7 +197,7 @@ export const expensesService = {
             .limit(limit);
 
         if (error || !expenses) {
-            console.error("Error fetching user expenses:", error);
+            log.error("Expenses", "Failed to fetch user expenses", error);
             return [];
         }
 

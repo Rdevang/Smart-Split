@@ -1,6 +1,3 @@
-import { NextResponse } from "next/server";
-import { createCsrfToken } from "@/lib/csrf";
-
 /**
  * GET /api/csrf
  * 
@@ -8,8 +5,12 @@ import { createCsrfToken } from "@/lib/csrf";
  * Used by forms to get a new token before submission
  * to prevent expiration issues.
  */
-export async function GET() {
-    const token = await createCsrfToken();
-    return NextResponse.json({ token });
-}
 
+import { createRoute, ApiResponse } from "@/lib/api";
+import { createCsrfToken } from "@/lib/csrf";
+
+export const GET = createRoute()
+    .handler(async () => {
+        const token = await createCsrfToken();
+        return ApiResponse.success({ token });
+    });

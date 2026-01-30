@@ -13,6 +13,7 @@
 
 import { z } from "zod";
 import sanitizeHtmlLib from "sanitize-html";
+import { log } from "./console-logger";
 
 // ============================================
 // LENGTH LIMITS
@@ -278,13 +279,13 @@ export function validateFormData<T extends z.ZodType>(
         const result = schema.safeParse(data);
 
         if (!result.success) {
-            console.warn("Form validation failed:", result.error.issues);
+            log.debug("Validation", "Form validation failed", { issues: result.error.issues });
             return null;
         }
 
         return result.data;
     } catch (error) {
-        console.error("Form data validation error:", error);
+        log.error("Validation", "Form data validation error", error);
         return null;
     }
 }
@@ -401,7 +402,7 @@ export function createValidator<T extends z.ZodType>(schema: T) {
 
             return { data: result.data };
         } catch (error) {
-            console.error("Validation error:", error);
+            log.error("Validation", "Validation error", error);
             return { error: "Invalid request data" };
         }
     };
@@ -433,7 +434,7 @@ export function buildSafeOrFilter(
 ): string | null {
     // Validate column name (only allow alphanumeric and underscore)
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column)) {
-        console.error("Invalid column name:", column);
+        log.warn("Validation", "Invalid column name blocked");
         return null;
     }
 

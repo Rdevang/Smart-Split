@@ -11,6 +11,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/currency";
 import { queueEmail } from "./email-queue";
+import { log } from "@/lib/console-logger";
 
 interface UserDigestData {
     userId: string;
@@ -307,13 +308,13 @@ export async function queueWeeklyDigestForUser(userId: string): Promise<boolean>
         const digestData = await generateUserDigest(userId);
 
         if (!digestData) {
-            console.log("[Digest] No data for user, skipping:", userId);
+            log.debug("Digest", "No data for user, skipping");
             return false;
         }
 
         // Skip if no activity (no balances and no expenses)
         if (digestData.totalOwed === 0 && digestData.totalOwing === 0 && digestData.expenseCount === 0) {
-            console.log("[Digest] No activity for user, skipping:", userId);
+            log.debug("Digest", "No activity for user, skipping");
             return false;
         }
 
@@ -343,7 +344,7 @@ export async function queueWeeklyDigestForUser(userId: string): Promise<boolean>
 
         return result.queued;
     } catch (error) {
-        console.error("[Digest] Error for user:", userId, error);
+        log.error("Digest", "Failed to queue digest for user", error);
         return false;
     }
 }
@@ -363,11 +364,11 @@ export async function queueAllWeeklyDigests(): Promise<{
     const { data: users, error } = await supabase.rpc("get_users_for_weekly_digest");
 
     if (error || !users) {
-        console.error("[Digest] Failed to get users:", error);
+        log.error("Digest", "Failed to get users for digest", error);
         return { queued: 0, skipped: 0, errors: 1 };
     }
 
-    console.log("[Digest] Processing", users.length, "users...");
+    log.info("Digest", "Processing users for weekly digest", { count: users.length });
 
     let queued = 0;
     let skipped = 0;
@@ -393,7 +394,7 @@ export async function queueAllWeeklyDigests(): Promise<{
         }
     }
 
-    console.log("[Digest] Complete. Queued:", queued, "Skipped:", skipped, "Errors:", errors);
+    log.info("Digest", "Digest processing complete", { queued, skipped, errors });
 
     return { queued, skipped, errors };
 }

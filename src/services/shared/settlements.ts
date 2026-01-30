@@ -9,6 +9,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { log } from "@/lib/console-logger";
 
 export interface SettlementWithNames {
     id: string;
@@ -80,7 +81,7 @@ export async function getSettlementsWithNamesCore(
         .order("requested_at", { ascending: false });
 
     if (error) {
-        console.error("Error fetching settlements with names:", error);
+        log.error("Settlements", "Failed to fetch settlements with names", error);
         return [];
     }
 

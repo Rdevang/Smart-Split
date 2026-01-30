@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { log } from "@/lib/console-logger";
 
 export interface ProfileData {
     id: string;
@@ -29,7 +30,7 @@ export const profileService = {
             .single();
 
         if (error) {
-            console.error("Error fetching profile:", error);
+            log.error("Profile", "Failed to fetch profile", error);
             return null;
         }
 
@@ -60,7 +61,7 @@ export const profileService = {
             });
 
             if (authError) {
-                console.error("Error updating auth metadata:", authError);
+                log.error("Profile", "Failed to update auth metadata", authError);
             }
         }
 

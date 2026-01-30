@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { log } from "@/lib/console-logger";
 
 /**
  * Hook to manage CSRF tokens with auto-refresh capability
@@ -20,7 +21,7 @@ export function useCsrf(initialToken: string) {
             const response = await fetch("/api/csrf");
             if (!response.ok) {
                 // Fall back to existing token if refresh fails
-                console.warn("Failed to refresh CSRF token, using existing");
+                log.warn("Auth", "Failed to refresh CSRF token, using existing");
                 return token;
             }
             const data = await response.json();
@@ -28,7 +29,7 @@ export function useCsrf(initialToken: string) {
             setToken(newToken);
             return newToken;
         } catch (error) {
-            console.warn("Error refreshing CSRF token:", error);
+            log.warn("Auth", "Error refreshing CSRF token", error);
             return token;
         }
     }, [token]);

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Camera, X, RotateCcw, Check, SwitchCamera } from "lucide-react";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
+import { log } from "@/lib/console-logger";
 
 interface CameraCaptureProps {
     onCapture: (file: File) => void;
@@ -49,7 +50,7 @@ export function CameraCapture({ onCapture, onClose, isOpen }: CameraCaptureProps
 
             setIsLoading(false);
         } catch (err) {
-            console.error("Camera error:", err);
+            log.error("Camera", "Failed to access camera", err);
             setError(
                 err instanceof Error && err.name === "NotAllowedError"
                     ? "Camera access denied. Please allow camera access in your browser settings."

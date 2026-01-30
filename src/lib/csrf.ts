@@ -27,9 +27,7 @@ function getSecretKey(): string {
     const secret = process.env.CSRF_SECRET;
     if (!secret) {
         // Development fallback - NOT SECURE FOR PRODUCTION
-        if (process.env.NODE_ENV === "production") {
-            console.warn("CSRF_SECRET not set in production! Using fallback key.");
-        }
+        // Silent in production to avoid leaking config info in logs
         return "development-csrf-secret-key-not-for-production";
     }
     return secret;

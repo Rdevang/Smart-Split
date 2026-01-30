@@ -7,6 +7,7 @@ import { logger, SecurityEvents } from "@/lib/logger";
 import { getSettlementsWithNamesCore, type SettlementWithNames } from "@/services/shared/settlements";
 import { verifyGroupAccess, getGroupMembership } from "@/lib/auth-helpers";
 import { logActivity, ActivityTypes } from "@/lib/activity-logger";
+import { log } from "@/lib/console-logger";
 
 type Group = Database["public"]["Tables"]["groups"]["Row"];
 type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
@@ -54,7 +55,7 @@ export const groupsService = {
             .eq("user_id", userId);
 
         if (membershipError || !membershipData) {
-            console.error("Error fetching memberships:", membershipError);
+            log.error("Groups", "Failed to fetch memberships", membershipError);
             return [];
         }
 
@@ -78,7 +79,7 @@ export const groupsService = {
             .order("updated_at", { ascending: false });
 
         if (groupsError || !groups) {
-            console.error("Error fetching groups:", groupsError);
+            log.error("Groups", "Failed to fetch groups", groupsError);
             return [];
         }
 
@@ -105,7 +106,7 @@ export const groupsService = {
             .single();
 
         if (error || !group) {
-            console.error("Error fetching group:", error);
+            log.error("Groups", "Failed to fetch group", error);
             return null;
         }
 
@@ -636,7 +637,7 @@ export const groupsService = {
         });
 
         if (error) {
-            console.error("Error fetching balances:", error);
+            log.error("Groups", "Failed to fetch balances", error);
             return [];
         }
 
@@ -841,7 +842,7 @@ export const groupsService = {
             .order("settled_at", { ascending: false });
 
         if (error) {
-            console.error("Error fetching settlements:", error);
+            log.error("Groups", "Failed to fetch settlements", error);
             return [];
         }
 
@@ -883,7 +884,7 @@ export const groupsService = {
             .order("requested_at", { ascending: false });
 
         if (error) {
-            console.error("Error fetching pending settlements:", error);
+            log.error("Groups", "Failed to fetch pending settlements", error);
             return [];
         }
 
@@ -917,7 +918,7 @@ export const groupsService = {
         });
 
         if (error) {
-            console.error("Error approving settlement:", error);
+            log.error("Groups", "Failed to approve settlement", error);
             return { success: false, error: error.message };
         }
 
@@ -935,7 +936,7 @@ export const groupsService = {
         });
 
         if (error) {
-            console.error("Error rejecting settlement:", error);
+            log.error("Groups", "Failed to reject settlement", error);
             return { success: false, error: error.message };
         }
 
@@ -950,7 +951,7 @@ export const groupsService = {
         });
 
         if (error) {
-            console.error("Error regenerating invite code:", error);
+            log.error("Groups", "Failed to regenerate invite code", error);
             return { success: false, error: error.message };
         }
 
@@ -969,7 +970,7 @@ export const groupsService = {
         });
 
         if (error) {
-            console.error("Error joining group:", error);
+            log.error("Groups", "Failed to join group", error);
             return { success: false, error: error.message };
         }
 

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
+import { log } from "@/lib/console-logger";
 
 type Activity = Database["public"]["Tables"]["activities"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -49,7 +50,7 @@ export const activitiesServerService = {
             .limit(limit);
 
         if (error || !activities) {
-            console.error("Error fetching activities:", error);
+            log.error("Activities", "Failed to fetch activities", error);
             return [];
         }
 
@@ -85,7 +86,7 @@ export const activitiesServerService = {
             .limit(limit);
 
         if (error || !activities) {
-            console.error("Error fetching group activities:", error);
+            log.error("Activities", "Failed to fetch group activities", error);
             return [];
         }
 
