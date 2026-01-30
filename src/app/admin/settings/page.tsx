@@ -39,7 +39,7 @@ export default async function AdminSettingsPage() {
     // Fetch all app settings
     const { data: settings, error } = await supabase
         .from("app_settings")
-        .select("*")
+        .select("id, key, value, is_enabled, description, category, updated_at")
         .order("category", { ascending: true })
         .order("key", { ascending: true });
 

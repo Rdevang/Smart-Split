@@ -184,10 +184,10 @@ export async function verifyExpenseAccess(
         return null;
     }
 
-    // Get expense with group_id
+    // Get expense with group_id (only select needed columns to avoid schema issues)
     const { data: expense, error } = await supabase
         .from("expenses")
-        .select("*")
+        .select("id, group_id, description, amount, paid_by, category, expense_date, notes")
         .eq("id", expenseId)
         .single();
 

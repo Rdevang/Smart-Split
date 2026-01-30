@@ -624,8 +624,7 @@ export const expensesService = {
     },
 
     /**
-     * Soft delete an expense (sets deleted_at timestamp)
-     * Expense can be restored within 30 days before permanent deletion
+     * Delete an expense (hard delete if soft delete column doesn't exist)
      * SECURITY: Verifies user is a member of the group before allowing delete
      */
     async deleteExpense(
@@ -640,24 +639,31 @@ export const expensesService = {
             return { success: false, error: "Expense not found or access denied" };
         }
 
-        // Use soft delete RPC function
-        const { error } = await supabase.rpc("soft_delete_expense", {
+        // Try soft delete RPC function first
+        const { error: rpcError } = await supabase.rpc("soft_delete_expense", {
             expense_uuid: expenseId,
         });
 
-        if (error) {
-            // Fallback to manual soft delete
-            const { error: updateError } = await supabase
+        if (rpcError) {
+            // RPC doesn't exist or soft delete column missing - do hard delete
+            // First delete related expense_splits
+            await supabase
+                .from("expense_splits")
+                .delete()
+                .eq("expense_id", expenseId);
+
+            // Then delete the expense
+            const { error: deleteError } = await supabase
                 .from("expenses")
-                .update({ deleted_at: new Date().toISOString() })
+                .delete()
                 .eq("id", expenseId);
 
-            if (updateError) {
-                return { success: false, error: updateError.message };
+            if (deleteError) {
+                return { success: false, error: deleteError.message };
             }
         }
 
-        // Log activity (audit trigger will also log this, but keep for backwards compatibility)
+        // Log activity
         await logActivity(supabase, {
             userId: deletedBy,
             groupId: access.groupId,

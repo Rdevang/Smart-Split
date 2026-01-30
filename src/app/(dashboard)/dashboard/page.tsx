@@ -39,11 +39,27 @@ export default async function DashboardPage() {
         // Only fetch currency since layout already has name
         supabase.from("profiles").select("full_name, currency").eq("id", userId).single(),
         // Get user's latest groups (ordered by most recent activity)
-        supabase.from("group_members")
-            .select("group_id, groups!inner(id, name, description, category, updated_at)")
-            .eq("user_id", userId)
-            .order("updated_at", { foreignTable: "groups", ascending: false })
-            .limit(3),
+        // First get group IDs, then fetch groups ordered by updated_at
+        (async () => {
+            const { data: memberships } = await supabase
+                .from("group_members")
+                .select("group_id")
+                .eq("user_id", userId);
+
+            if (!memberships || memberships.length === 0) {
+                return { data: [] as Group[], error: null };
+            }
+
+            const groupIds = memberships.map(m => m.group_id);
+            const result = await supabase
+                .from("groups")
+                .select("id, name, description, category")
+                .in("id", groupIds)
+                .order("updated_at", { ascending: false })
+                .limit(3);
+
+            return { data: (result.data || []) as Group[], error: result.error };
+        })(),
         // Single query for all expense splits - filter in JS
         supabase.from("expense_splits")
             .select("amount, user_id, is_settled, expense:expenses!inner(paid_by)")
@@ -58,7 +74,8 @@ export default async function DashboardPage() {
     const firstName = profile?.full_name?.split(" ")[0] || "there";
     const currency = profile?.currency || "USD";
 
-    const groups = (groupMembershipsResult.data || []).map((m) => m.groups as unknown as Group);
+    // Groups are now directly from the groups table (not via join)
+    const groups = (groupMembershipsResult.data || []).filter(Boolean) as Group[];
     const firstGroupId = groups[0]?.id;
     const groupCount = groups.length;
 

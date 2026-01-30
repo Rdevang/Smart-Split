@@ -132,7 +132,7 @@ export async function getAppSettings(): Promise<{
 
     const { data, error } = await supabase
         .from("app_settings")
-        .select("*")
+        .select("id, key, value, is_enabled, description, category, updated_at")
         .order("category", { ascending: true })
         .order("key", { ascending: true });
 

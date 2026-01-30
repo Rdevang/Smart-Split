@@ -55,7 +55,7 @@ export default async function BulkExpensePage({ params }: BulkExpensePageProps) 
 
     return (
         <div className="max-w-5xl mx-auto">
-            <BulkExpenseForm group={formGroup} userId={session.user.id} />
+            <BulkExpenseForm group={formGroup} userId={user.id} />
         </div>
     );
 }

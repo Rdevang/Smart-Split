@@ -4,7 +4,7 @@ import { useState, memo } from "react";
 import Image from "next/image";
 import {
     Utensils, Car, Film, Zap, Home, ShoppingBag, Plane,
-    Heart, ShoppingCart, MoreHorizontal, Trash2, Receipt, UserCircle, MapPin
+    Heart, ShoppingCart, MoreHorizontal, Trash2, Pencil, Receipt, UserCircle, MapPin
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +36,7 @@ interface Split {
     participant_avatar?: string | null;
 }
 
-interface ExpenseCardExpense {
+export interface ExpenseCardExpense {
     id: string;
     description: string;
     amount: number;
@@ -44,6 +44,7 @@ interface ExpenseCardExpense {
     expense_date: string | null;
     paid_by: string | null;
     paid_by_placeholder_id?: string | null;
+    group_id?: string;
     paid_by_profile: {
         id: string;
         full_name: string | null;
@@ -56,6 +57,7 @@ interface ExpenseCardExpense {
     } | null;
     location?: string | null;
     location_coordinates?: { lat: number; lng: number } | null;
+    notes?: string | null;
     splits: Split[];
 }
 
@@ -63,7 +65,9 @@ interface ExpenseCardProps {
     expense: ExpenseCardExpense;
     currentUserId: string;
     currency?: string;
+    onEdit?: (expense: ExpenseCardExpense) => void;
     onDelete?: (expenseId: string) => void;
+    showActions?: boolean;
 }
 
 const categoryIcons: Record<ExpenseCategory, React.ReactNode> = {
@@ -119,10 +123,11 @@ function getSplitDisplayInfo(split: Split, currentUserId: string) {
     return { name, avatarUrl, isPlaceholder, isCurrentUser };
 }
 
-export const ExpenseCard = memo(function ExpenseCard({ expense, currentUserId, currency = "USD", onDelete }: ExpenseCardProps) {
-    const [showActions, setShowActions] = useState(false);
+export const ExpenseCard = memo(function ExpenseCard({ expense, currentUserId, currency = "USD", onEdit, onDelete, showActions: enableActions = true }: ExpenseCardProps) {
+    const [showActionsMenu, setShowActionsMenu] = useState(false);
     const category = expense.category || "other";
     const paidByUser = expense.paid_by === currentUserId;
+    const canModify = paidByUser && enableActions && (onEdit || onDelete);
 
     // Get payer name - could be current user, registered user, or placeholder
     const getPayerName = () => {
@@ -238,29 +243,50 @@ export const ExpenseCard = memo(function ExpenseCard({ expense, currentUserId, c
                     </div>
 
                     {/* Actions */}
-                    {paidByUser && onDelete && (
+                    {canModify && (
                         <div className="relative">
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100"
-                                onClick={() => setShowActions(!showActions)}
+                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => setShowActionsMenu(!showActionsMenu)}
                             >
                                 <MoreHorizontal className="h-4 w-4" />
                             </Button>
-                            {showActions && (
-                                <div className="absolute right-0 top-8 z-10 w-32 rounded-lg border bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                                    <button
-                                        onClick={() => {
-                                            onDelete(expense.id);
-                                            setShowActions(false);
-                                        }}
-                                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                        Delete
-                                    </button>
-                                </div>
+                            {showActionsMenu && (
+                                <>
+                                    {/* Backdrop to close menu */}
+                                    <div
+                                        className="fixed inset-0 z-10"
+                                        onClick={() => setShowActionsMenu(false)}
+                                    />
+                                    <div className="absolute right-0 top-8 z-20 w-32 rounded-lg border bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                                        {onEdit && (
+                                            <button
+                                                onClick={() => {
+                                                    onEdit(expense);
+                                                    setShowActionsMenu(false);
+                                                }}
+                                                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                                Edit
+                                            </button>
+                                        )}
+                                        {onDelete && (
+                                            <button
+                                                onClick={() => {
+                                                    onDelete(expense.id);
+                                                    setShowActionsMenu(false);
+                                                }}
+                                                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                                Delete
+                                            </button>
+                                        )}
+                                    </div>
+                                </>
                             )}
                         </div>
                     )}

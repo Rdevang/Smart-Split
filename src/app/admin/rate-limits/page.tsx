@@ -31,7 +31,7 @@ export default async function RateLimitSettingsPage() {
     // Fetch rate limit settings
     const { data: settings, error } = await supabase
         .from("rate_limit_settings")
-        .select("*")
+        .select("id, route_pattern, route_name, description, rate_limit_type, is_enabled, requests_limit, window_duration, updated_at")
         .order("route_name", { ascending: true });
 
     if (error) {
