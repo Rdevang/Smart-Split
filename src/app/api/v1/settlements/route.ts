@@ -15,15 +15,17 @@ import {
     withRateLimit,
     withValidation, 
     withQueryValidation,
-    withGroupMembership,
     ApiResponse, 
-    ApiError 
+    ApiError,
+    type AuthContext,
+    type ValidatedContext,
+    type QueryValidatedContext
 } from "@/lib/api";
 import { SettlementInputSchema } from "@/lib/validation";
 import { withLock, LockKeys } from "@/lib/distributed-lock";
-import { logger, SecurityEvents } from "@/lib/logger";
+import { logger } from "@/lib/logger";
 import { invalidateGroupCache, invalidateUserCache } from "@/lib/cache";
-import { createRateLimitHeaders } from "@/lib/rate-limit";
+import { createRateLimitHeaders, type RateLimitResult } from "@/lib/rate-limit";
 
 const API_VERSION = "v1";
 
@@ -31,6 +33,14 @@ const API_VERSION = "v1";
 const SettlementsQuerySchema = z.object({
     group_id: z.string().uuid("Invalid group_id parameter"),
 });
+
+// Combined context types
+type SettlementPostContext = AuthContext & ValidatedContext<z.infer<typeof SettlementInputSchema>> & {
+    rateLimit?: RateLimitResult;
+};
+type SettlementGetContext = AuthContext & QueryValidatedContext<z.infer<typeof SettlementsQuerySchema>> & {
+    rateLimit?: RateLimitResult;
+};
 
 /**
  * POST /api/v1/settlements
@@ -40,13 +50,24 @@ export const POST = createRoute()
     .use(withAuth())
     .use(withRateLimit("financial"))
     .use(withValidation(SettlementInputSchema))
-    .use(withGroupMembership("group_id", { allowBodyGroupId: true }))
     .handler(async (ctx) => {
-        const data = ctx.validated;
+        const { user, validated: data, supabase, rateLimit } = ctx as unknown as SettlementPostContext;
         const headers = {
             "X-API-Version": API_VERSION,
-            ...createRateLimitHeaders(ctx.rateLimit),
+            ...(rateLimit ? createRateLimitHeaders(rateLimit) : {}),
         };
+
+        // Verify user is a member of the group
+        const { data: membership, error: membershipError } = await supabase
+            .from("group_members")
+            .select("id")
+            .eq("group_id", data.group_id)
+            .eq("user_id", user.id)
+            .single();
+
+        if (membershipError || !membership) {
+            return ApiError.forbidden("Not a member of this group");
+        }
 
         try {
             // Determine from/to users and whether they're placeholders
@@ -66,14 +87,14 @@ export const POST = createRoute()
                 lockKey,
                 async () => {
                     // Determine if approval is needed
-                    const currentUserIsReceiver = toUserId === ctx.user.id;
+                    const currentUserIsReceiver = toUserId === user.id;
                     const needsApproval = !toIsPlaceholder && !currentUserIsReceiver && !fromIsPlaceholder;
 
                     const settlementData: Record<string, unknown> = {
                         group_id: data.group_id,
                         amount: Math.round(data.amount * 100) / 100,
                         status: needsApproval ? "pending" : "approved",
-                        requested_by: ctx.user.id,
+                        requested_by: user.id,
                         note: data.note || null,
                         ...(needsApproval ? {} : { settled_at: new Date().toISOString() }),
                     };
@@ -91,7 +112,7 @@ export const POST = createRoute()
                     }
 
                     // Create settlement
-                    const { data: settlement, error } = await ctx.supabase
+                    const { data: settlement, error } = await supabase
                         .from("settlements")
                         .insert(settlementData)
                         .select()
@@ -102,8 +123,8 @@ export const POST = createRoute()
                     }
 
                     // Log activity
-                    await ctx.supabase.from("activities").insert({
-                        user_id: ctx.user.id,
+                    await supabase.from("activities").insert({
+                        user_id: user.id,
                         group_id: data.group_id,
                         entity_type: "settlement",
                         entity_id: settlement.id,
@@ -166,23 +187,36 @@ export const GET = createRoute()
     .use(withAuth())
     .use(withRateLimit("api"))
     .use(withQueryValidation(SettlementsQuerySchema))
-    .use(withGroupMembership("group_id", { allowQueryGroupId: true }))
     .handler(async (ctx) => {
+        const { user, query, supabase, rateLimit } = ctx as unknown as SettlementGetContext;
+        const { group_id } = query;
         const headers = {
             "X-API-Version": API_VERSION,
-            ...createRateLimitHeaders(ctx.rateLimit),
+            ...(rateLimit ? createRateLimitHeaders(rateLimit) : {}),
         };
+
+        // Verify user is a member of the group
+        const { data: membership, error: membershipError } = await supabase
+            .from("group_members")
+            .select("id")
+            .eq("group_id", group_id)
+            .eq("user_id", user.id)
+            .single();
+
+        if (membershipError || !membership) {
+            return ApiError.forbidden("Not a member of this group");
+        }
 
         try {
             // Fetch settlements
-            const { data: settlements, error } = await ctx.supabase
+            const { data: settlements, error } = await supabase
                 .from("settlements")
                 .select(`
                     *,
                     from_profile:profiles!settlements_from_user_fkey(id, full_name, email),
                     to_profile:profiles!settlements_to_user_fkey(id, full_name, email)
                 `)
-                .eq("group_id", ctx.groupId)
+                .eq("group_id", group_id)
                 .order("created_at", { ascending: false })
                 .limit(50);
 
@@ -196,7 +230,7 @@ export const GET = createRoute()
                     data: settlements,
                     meta: {
                         count: settlements?.length || 0,
-                        group_id: ctx.groupId,
+                        group_id: group_id,
                     },
                 },
                 { headers }

@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { createRoute, withAuth, withValidation, withQueryValidation, ApiResponse, ApiError } from "@/lib/api";
+import { createRoute, withAuth, withValidation, withQueryValidation, ApiResponse, ApiError, type AuthContext, type ValidatedContext, type QueryValidatedContext } from "@/lib/api";
 import { parseExpenseFromText, suggestCategory } from "@/services/ai";
 import { checkAIUsage, incrementAIUsage } from "@/lib/ai-rate-limit";
 import { aiLog } from "@/lib/console-logger";
@@ -23,14 +23,19 @@ const CategoryQuerySchema = z.object({
     description: z.string().optional(),
 });
 
+// Combined context types
+type ParseExpenseContext = AuthContext & ValidatedContext<z.infer<typeof ParseExpenseSchema>>;
+type CategoryQueryContext = AuthContext & QueryValidatedContext<z.infer<typeof CategoryQuerySchema>>;
+
 export const POST = createRoute()
     .use(withAuth())
     .use(withValidation(ParseExpenseSchema))
     .handler(async (ctx) => {
-        const { text, groupId } = ctx.validated;
+        const { user, validated, supabase } = ctx as unknown as ParseExpenseContext;
+        const { text, groupId } = validated;
 
         // Check AI usage limit
-        const usage = await checkAIUsage(ctx.user.id);
+        const usage = await checkAIUsage(user.id);
         if (!usage.allowed) {
             const hoursUntilReset = Math.ceil((usage.resetAt.getTime() - Date.now()) / (1000 * 60 * 60));
             return ApiError.rateLimited(hoursUntilReset * 3600);
@@ -40,7 +45,7 @@ export const POST = createRoute()
             // Get group members if groupId provided
             let groupMembers: string[] = [];
             if (groupId) {
-                const { data: members } = await ctx.supabase
+                const { data: members } = await supabase
                     .from("group_members")
                     .select(`
                         user_id,
@@ -65,10 +70,10 @@ export const POST = createRoute()
             const parsedExpense = await parseExpenseFromText(text, groupMembers);
 
             // Increment usage count after successful parse
-            await incrementAIUsage(ctx.user.id);
+            await incrementAIUsage(user.id);
 
             // Get updated usage for response
-            const updatedUsage = await checkAIUsage(ctx.user.id);
+            const updatedUsage = await checkAIUsage(user.id);
 
             return ApiResponse.success({
                 success: true,
@@ -91,11 +96,12 @@ export const GET = createRoute()
     .use(withAuth())
     .use(withQueryValidation(CategoryQuerySchema))
     .handler(async (ctx) => {
-        const { action, description } = ctx.query;
+        const { user, query } = ctx as unknown as CategoryQueryContext;
+        const { action, description } = query;
 
         // Check usage endpoint
         if (action === "check-usage") {
-            const usage = await checkAIUsage(ctx.user.id);
+            const usage = await checkAIUsage(user.id);
             return ApiResponse.success({
                 success: true,
                 usage: {

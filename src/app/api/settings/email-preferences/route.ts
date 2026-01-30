@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { createRoute, withAuth, withValidation, ApiResponse, ApiError } from "@/lib/api";
+import { createRoute, withAuth, withValidation, ApiResponse, ApiError, type AuthContext, type ValidatedContext } from "@/lib/api";
 import { log } from "@/lib/console-logger";
 
 // Default preferences for new users
@@ -34,10 +34,11 @@ const UpdatePreferencesSchema = z.object({
 export const GET = createRoute()
     .use(withAuth())
     .handler(async (ctx) => {
-        const { data: profile, error } = await ctx.supabase
+        const { user, supabase } = ctx as AuthContext;
+        const { data: profile, error } = await supabase
             .from("profiles")
             .select("email_preferences")
-            .eq("id", ctx.user.id)
+            .eq("id", user.id)
             .single();
 
         if (error) {
@@ -50,17 +51,21 @@ export const GET = createRoute()
         });
     });
 
+// Combined context type for POST
+type UpdatePreferencesContext = AuthContext & ValidatedContext<z.infer<typeof UpdatePreferencesSchema>>;
+
 export const POST = createRoute()
     .use(withAuth())
     .use(withValidation(UpdatePreferencesSchema))
     .handler(async (ctx) => {
-        const { userId, preferences } = ctx.validated;
+        const { user, validated, supabase } = ctx as unknown as UpdatePreferencesContext;
+        const { userId, preferences } = validated;
 
         // Use authenticated user's ID if "current" is passed or not provided
-        const targetUserId = !userId || userId === "current" ? ctx.user.id : userId;
+        const targetUserId = !userId || userId === "current" ? user.id : userId;
 
         // Verify user can only update their own preferences
-        if (targetUserId !== ctx.user.id) {
+        if (targetUserId !== user.id) {
             return ApiError.forbidden("You can only update your own preferences");
         }
 
@@ -80,7 +85,7 @@ export const POST = createRoute()
         }
 
         // Update preferences
-        const { error } = await ctx.supabase
+        const { error } = await supabase
             .from("profiles")
             .update({ email_preferences: sanitizedPreferences })
             .eq("id", targetUserId);

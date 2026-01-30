@@ -6,20 +6,24 @@
  */
 
 import { z } from "zod";
-import { createRoute, withAuth, withQueryValidation, ApiResponse, ApiError } from "@/lib/api";
+import { createRoute, withAuth, withQueryValidation, ApiResponse, ApiError, type AuthContext, type QueryValidatedContext } from "@/lib/api";
 
 const PreviewQuerySchema = z.object({
     code: z.string().min(1, "Invite code is required"),
 });
 
+// Combined context type
+type PreviewContext = AuthContext & QueryValidatedContext<z.infer<typeof PreviewQuerySchema>>;
+
 export const GET = createRoute()
     .use(withAuth())
     .use(withQueryValidation(PreviewQuerySchema))
     .handler(async (ctx) => {
-        const { code } = ctx.query;
+        const { user, query, supabase } = ctx as unknown as PreviewContext;
+        const { code } = query;
 
         // Find group by invite code
-        const { data: group, error } = await ctx.supabase
+        const { data: group, error } = await supabase
             .from("groups")
             .select(`
                 id, 
@@ -36,7 +40,7 @@ export const GET = createRoute()
 
         // Check if user is already a member
         const alreadyMember = group.group_members?.some(
-            (member: { user_id: string | null }) => member.user_id === ctx.user.id
+            (member: { user_id: string | null }) => member.user_id === user.id
         );
 
         return ApiResponse.success({

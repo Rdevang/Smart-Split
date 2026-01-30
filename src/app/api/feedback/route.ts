@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { createRoute, withAuth, withRateLimit, withValidation, withOptionalAuth, ApiResponse, ApiError } from "@/lib/api";
+import { createRoute, withAuth, withRateLimit, withValidation, withOptionalAuth, ApiResponse, ApiError, type AuthContext, type OptionalAuthContext, type ValidatedContext } from "@/lib/api";
 import { sanitizeForDb, stripHtml, sanitizeUrl } from "@/lib/validation";
 import { logger } from "@/lib/logger";
 import { verifyRecaptcha } from "@/lib/recaptcha";
@@ -45,10 +45,11 @@ const FeedbackSchema = z.object({
 export const GET = createRoute()
     .use(withAuth())
     .handler(async (ctx) => {
-        const { data: feedbacks, error } = await ctx.supabase
+        const { user, supabase } = ctx as AuthContext;
+        const { data: feedbacks, error } = await supabase
             .from("feedback")
             .select("id, type, title, description, priority, status, admin_response, created_at, updated_at")
-            .eq("user_id", ctx.user.id)
+            .eq("user_id", user.id)
             .order("created_at", { ascending: false });
 
         if (error) {
@@ -63,15 +64,18 @@ export const GET = createRoute()
 // POST - Submit new feedback (public)
 // ============================================
 
+// Combined context type for POST handler
+type FeedbackPostContext = OptionalAuthContext & ValidatedContext<z.infer<typeof FeedbackSchema>>;
+
 export const POST = createRoute()
     .use(withOptionalAuth()) // Allow anonymous submissions
     .use(withRateLimit("public"))
     .use(withValidation(FeedbackSchema, { maxSize: 50000 })) // 50KB max
     .handler(async (ctx) => {
-        const data = ctx.validated;
+        const { user, validated: data, supabase } = ctx as unknown as FeedbackPostContext;
 
         // reCAPTCHA Verification (checks if enabled in settings)
-        const isAuthenticated = !!ctx.user;
+        const isAuthenticated = !!user;
         const recaptchaResult = await verifyRecaptcha(data.recaptcha_token, "feedback", isAuthenticated);
         if (!recaptchaResult.success) {
             logger.warn("Feedback submission blocked by reCAPTCHA", {
@@ -96,7 +100,7 @@ export const POST = createRoute()
         const sanitizedUrl = data.page_url ? sanitizeUrl(data.page_url) : null;
 
         // Insert feedback
-        const { error } = await ctx.supabase
+        const { error } = await supabase
             .from("feedback")
             .insert({
                 type: data.type,
@@ -106,7 +110,7 @@ export const POST = createRoute()
                 status: "submitted",
                 email: sanitizedEmail,
                 name: sanitizedName,
-                user_id: data.user_id || ctx.user?.id || null,
+                user_id: data.user_id || user?.id || null,
                 user_agent: data.user_agent ? data.user_agent.slice(0, LIMITS.USER_AGENT_MAX) : null,
                 page_url: sanitizedUrl?.slice(0, LIMITS.URL_MAX) || null,
             });
@@ -126,10 +130,10 @@ export const POST = createRoute()
 
         // If this is a review, also create an entry in the reviews table
         if (data.type === "review") {
-            const { error: reviewError } = await ctx.supabase
+            const { error: reviewError } = await supabase
                 .from("reviews")
                 .insert({
-                    user_id: data.user_id || ctx.user?.id || null,
+                    user_id: data.user_id || user?.id || null,
                     author_name: sanitizedName || "Anonymous",
                     author_title: null,
                     content: sanitizedDescription,
