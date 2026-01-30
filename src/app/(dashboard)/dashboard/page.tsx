@@ -39,8 +39,12 @@ export default async function DashboardPage() {
     ] = await Promise.all([
         // Only fetch currency since layout already has name
         supabase.from("profiles").select("full_name, currency").eq("id", userId).single(),
-        // Get user's groups
-        supabase.from("group_members").select("group_id, groups!inner(id, name, description, category)").eq("user_id", userId).limit(3),
+        // Get user's latest groups (ordered by most recent activity)
+        supabase.from("group_members")
+            .select("group_id, groups!inner(id, name, description, category, updated_at)")
+            .eq("user_id", userId)
+            .order("updated_at", { foreignTable: "groups", ascending: false })
+            .limit(3),
         // Single query for all expense splits - filter in JS
         supabase.from("expense_splits")
             .select("amount, user_id, is_settled, expense:expenses!inner(paid_by)")
