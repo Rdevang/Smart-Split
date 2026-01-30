@@ -74,7 +74,7 @@ async function withTimeout<T>(
  */
 export const DATA_VERSIONS = {
     // Group data
-    groups: "v1",       // Group details, members, settings
+    groups: "v2",       // Group details, members, settings (v2: added updated_at ordering)
     balances: "v1",     // Balance calculations (expensive!)
     settlements: "v1",  // Settlement records
 
@@ -84,7 +84,7 @@ export const DATA_VERSIONS = {
 
     // User data
     users: "v1",        // User profiles, preferences
-    dashboard: "v1",    // Dashboard aggregates
+    dashboard: "v2",    // Dashboard aggregates (v2: groups ordered by updated_at)
 
     // Activity
     activity: "v1",     // Activity feeds

@@ -11,9 +11,6 @@ import { formatCurrency } from "@/lib/currency";
 import { encryptUrlId } from "@/lib/url-ids";
 import type { Profile, Group, ExpenseSplit, RecentExpense } from "@/types/dashboard";
 
-// Force dynamic rendering to ensure fresh data
-export const dynamic = "force-dynamic";
-
 // ============================================
 // OPTIMIZED: Single data fetch, no Suspense overhead
 // Trade streaming for faster total load time
