@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "lucide-react";
@@ -53,6 +53,7 @@ export function EditExpenseModal({ expense, currentUserId, onClose, onSuccess }:
     const {
         register,
         handleSubmit,
+        control,
         formState: { errors },
     } = useForm<EditExpenseFormData>({
         resolver: zodResolver(editExpenseSchema),
@@ -130,11 +131,18 @@ export function EditExpenseModal({ expense, currentUserId, onClose, onSuccess }:
 
                     {/* Category */}
                     <div>
-                        <Select
-                            label="Category"
-                            options={categoryOptions}
-                            {...register("category")}
-                            error={errors.category?.message}
+                        <Controller
+                            name="category"
+                            control={control}
+                            render={({ field }) => (
+                                <Select
+                                    label="Category"
+                                    options={categoryOptions}
+                                    value={field.value}
+                                    onChange={field.onChange}
+                                    error={errors.category?.message}
+                                />
+                            )}
                         />
                     </div>
 

@@ -201,7 +201,7 @@ export function ExpensesPageWrapper({
                         Cancel
                     </Button>
                     <Button
-                        variant="destructive"
+                        variant="danger"
                         onClick={handleDeleteConfirm}
                         disabled={isDeleting}
                         className="flex-1"
